@@ -14,7 +14,7 @@
 <meta property="og:title" content="後場茶湯效期板">
 <meta property="og:description" content="茶湯・珍珠・配料效期倒數、下茶提醒與每日用量紀錄，全店手機即時同步。">
 <meta property="og:url" content="https://keluoyideal.github.io/Tea-Board/">
-<meta property="og:image" content="https://keluoyideal.github.io/Tea-Board/og.png">
+<meta property="og:image" content="https://keluoyideal.github.io/Tea-Board/og.png?v=2">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
@@ -184,6 +184,12 @@ main{flex:1;min-height:0;display:grid}
 .part b{font-size:20px}
 .part .acts{margin-left:auto}
 .loc[data-loc="fridge"]{background:var(--cook);color:var(--surface)}
+.pin{font:inherit;font-size:18px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);width:9em;min-width:0}
+.trash{display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--line);padding-top:10px}
+.trow{display:flex;align-items:center;gap:8px;justify-content:space-between;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--bg)}
+.trow span{min-width:0;font-size:14px}.trow small{display:block;color:var(--muted);font-size:11px}
+.warn-note{color:var(--warn);font-weight:700}
+.pinform input{font:inherit;font-size:16px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);min-width:0;flex:1}
 .confirm{display:flex;flex-direction:column;gap:8px;border:2px solid var(--bad);background:var(--bad-bg);border-radius:10px;padding:10px 12px;width:100%}
 .confirm b{color:var(--bad)}
 .staff .tab[aria-pressed="true"]{background:var(--top);border-color:var(--top);color:var(--surface)}
@@ -361,6 +367,7 @@ const wasteOf=b=>b.kind==="top"?(b.wasteBucket||0):isPearl(b.item)?(b.waste||0):
 const $=id=>document.getElementById(id);
 
 /* ===== state (saved in this device's browser) ===== */
+let trash=[], pinHash=null, staffDel=null, pinEdit=false;
 let batches=[], tops=[], bigDays=new Set(); /* "YYYY-MM-DD|品項": that item had a big order that day */
 const topItems=TOPS.map(t=>t.n);
 const DEFAULT_STAFF=["力瑜","予諠","Jessie","Vicky","晨蕊","以馨","小唐","田祈","ㄍㄨㄣ","微媛","小潔","庭瑋"];
@@ -384,7 +391,7 @@ function loadDevice(){try{const o=JSON.parse(localStorage.getItem(LOCAL_KEY)||"{
 function saveDevice(){try{localStorage.setItem(LOCAL_KEY,JSON.stringify({shopCode,selStaff}))}catch(e){}}
 const stable=o=>JSON.stringify(o,(k,v)=>v&&typeof v==="object"&&!Array.isArray(v)?Object.keys(v).sort().reduce((a,x)=>(a[x]=v[x],a),{}):v);
 const clean=o=>JSON.parse(JSON.stringify(o));
-const metaOf=()=>({bigDays:[...bigDays],fridgeLog,topExtra,busyOverride,staff,stopped});
+const metaOf=()=>({bigDays:[...bigDays],fridgeLog,topExtra,busyOverride,staff,stopped,pinHash});
 const cloud={on:false,ready:false,got:{},base:null,last:{batches:{},tops:{},meta:null},status:"",
   start(code){
     try{if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG)}catch(e){this.fail("設定錯誤");return}
@@ -397,10 +404,10 @@ const cloud={on:false,ready:false,got:{},base:null,last:{batches:{},tops:{},meta
   },
   fail(t){this.set(t);toast(t)},
   set(t){this.status=t;const el=$("cloud");if(el){el.dataset.s=t==="已同步"?"ok":/中斷|失敗|錯誤/.test(t)?"bad":"wait";el.title=t}},
-  done(k){this.got[k]=1;if(this.got.batches&&this.got.tops&&this.got.meta)this.ready=true;render()},
+  done(k){this.got[k]=1;if(this.got.batches&&this.got.tops&&this.got.trash&&this.got.meta)this.ready=true;render()},
   listen(){
     const cut=Date.now()-70*D;
-    [["batches",v=>batches=v],["tops",v=>tops=v]].forEach(([col,put])=>
+    [["batches",v=>batches=v],["tops",v=>tops=v],["trash",v=>trash=v]].forEach(([col,put])=>
       this.base.collection(col).where("startAt",">=",cut).onSnapshot(s=>{
         const arr=s.docs.map(d=>({...d.data(),id:d.id}));
         this.last[col]=Object.fromEntries(arr.map(x=>[x.id,stable(clean(x))]));put(arr);
@@ -409,14 +416,14 @@ const cloud={on:false,ready:false,got:{},base:null,last:{batches:{},tops:{},meta
     this.base.collection("meta").doc("state").onSnapshot(d=>{
       const o=d.exists?d.data():{};
       bigDays=new Set(o.bigDays||[]);fridgeLog=o.fridgeLog||{};topExtra=o.topExtra||{};busyOverride=o.busyOverride||{};
-      staff=o.staff?.length?o.staff:[...DEFAULT_STAFF];stopped=o.stopped||{};selStaff=selStaff.filter(n=>staff.includes(n));
+      staff=o.staff?.length?o.staff:[...DEFAULT_STAFF];stopped=o.stopped||{};pinHash=o.pinHash||null;selStaff=selStaff.filter(n=>staff.includes(n));
       this.last.meta=d.exists?stable(clean(metaOf())):null;this.done("meta");
     },e=>this.fail("同步中斷（"+e.code+"）"));
   },
   push(){
     if(!this.ready)return;
     const wb=this.base.firestore.batch();let n=0;
-    [["batches",batches],["tops",tops]].forEach(([col,arr])=>{
+    [["batches",batches],["tops",tops],["trash",trash]].forEach(([col,arr])=>{
       const prev=this.last[col],seen={};
       arr.forEach(x=>{const c=clean(x),k=stable(c);seen[x.id]=1;if(prev[x.id]!==k){wb.set(this.base.collection(col).doc(x.id),c);prev[x.id]=k;n++}});
       Object.keys(prev).forEach(id=>{if(!seen[id]){wb.delete(this.base.collection(col).doc(id));delete prev[id];n++}});
@@ -434,13 +441,13 @@ function showGate(){
 function enterShop(code){code=code.trim().toLowerCase();if(!/^[a-z0-9-]{6,40}$/.test(code)){toast("店號格式不對");return false}
   shopCode=code;saveDevice();$("gate").hidden=true;cloud.start(code);return true}
 
-function save(){if(cloud.on){saveDevice();cloud.push();return}try{localStorage.setItem(STORE_KEY,JSON.stringify({batches,tops,bigDays:[...bigDays],fridgeLog,topExtra,busyOverride,staff,selStaff,stopped}))}catch(e){}}
+function save(){if(cloud.on){saveDevice();cloud.push();return}try{localStorage.setItem(STORE_KEY,JSON.stringify({batches,tops,trash,pinHash,bigDays:[...bigDays],fridgeLog,topExtra,busyOverride,staff,selStaff,stopped}))}catch(e){}}
 function load(){loadDevice();if(FIREBASE_CONFIG&&window.firebase){
   const m=location.hash.match(/^#([a-z0-9-]{6,40})$/i);if(m){shopCode=m[1].toLowerCase();saveDevice();history.replaceState(null,"",location.pathname+location.search)}
   shopCode?cloud.start(shopCode):showGate();return}
   if(FIREBASE_CONFIG)setTimeout(()=>toast("連不上同步伺服器，先存在這支手機，請檢查網路後重新整理"),800);
   try{const o=JSON.parse(localStorage.getItem(STORE_KEY)||"null");if(!o)return;const cut=Date.now()-70*864e5;
-  batches=(o.batches||[]).filter(b=>b.startAt>=cut||b.status==="active");tops=(o.tops||[]).filter(t=>t.startAt>=cut||t.status==="active");
+  batches=(o.batches||[]).filter(b=>b.startAt>=cut||b.status==="active");tops=(o.tops||[]).filter(t=>t.startAt>=cut||t.status==="active");trash=o.trash||[];pinHash=o.pinHash||null;
   bigDays=new Set(o.bigDays||[]);fridgeLog=o.fridgeLog||{};topExtra=o.topExtra||{};busyOverride=o.busyOverride||{};staff=o.staff?.length?o.staff:[...DEFAULT_STAFF];{const t=dayKey(Date.now());stopped=o.stopped?.[t]?{[t]:o.stopped[t]}:{}};selStaff=(o.selStaff||[]).filter(n=>staff.includes(n))}catch(e){}}
 
 /* ===== time helpers ===== */
@@ -505,7 +512,7 @@ function fixNames(){const f=n=>RENAME[n]||n;
   if(staff.some(n=>RENAME[n]))staff=[...new Set(staff.map(f))];
   if(selStaff.some(n=>RENAME[n]))selStaff=[...new Set(selStaff.map(f))];
   tops.forEach(t=>{if(t.by?.some(n=>RENAME[n]))t.by=t.by.map(f)})}
-function promoteAll(){fixNames();
+function promoteAll(){fixNames();purgeTrash();
   batches.forEach(b=>{if(b.status==="active"&&isTea(b.item)){tidy(b);if(!b.parts.length){b.status="done";b.endAt=b.endAt||Date.now()}}});
   /* plain teas never go in the fridge (records from older versions move to standby) */
   batches.forEach(b=>{if(b.status==="active"&&isPlain(b.item)&&hasLoc(b,"fridge")){b.parts.forEach(p=>{if(p.loc==="fridge")p.loc="standby"});tidy(b)}});
@@ -639,7 +646,7 @@ function wasteChips(id,p,max,size){
 function teaRowHTML(b,now){
   const ph=phase(b,now),t=timer(b,now),parts=partsOf(b);let acts;
   if(openWaste===b.id)acts=`<div class="acts"><span>報廢多少？（這批還有 ${fmt(remainOf(b))} 桶）</span>${wasteChips(b.id,false,remainOf(b),b.size)}<button class="btn" data-cancel>取消</button></div>`;
-  else if(confirmDel===b.id)acts=`<div class="acts"><button class="btn bad" data-del="${b.id}">確定刪除這筆</button><button class="btn" data-cancel>不刪</button></div>`;
+  else if(confirmDel===b.id)acts=`<div class="acts">${needPinFor(b)?`<span>這筆超過 ${FREE_UNDO_MIN} 分鐘，要店長密碼才能刪</span>${pinField()}`:""}<button class="btn bad" data-del="${b.id}">確定刪除這筆</button><button class="btn" data-cancel>不刪</button></div>`;
   else acts=`<div class="acts"><button class="btn" data-wopen="${b.id}">報廢</button><button class="btn ghost" data-delask="${b.id}">誤按刪除</button></div>`;
   const partBtns=(p,i)=>{const a=`data-b="${b.id}" data-i="${i}"`;
     if(p.loc==="fridge"){const first=oldestFridge(b.item);return !itemHasCounter(b.item)&&first&&first.b===b?`<button class="btn pri" data-pout ${a}>拿 ${fmt(Math.min(1,p.amt))} 桶出來</button>`:`<span class="note">${itemHasCounter(b.item)?"檯面用完再拿":"先拿較早的"}</span>`}
@@ -656,7 +663,7 @@ function rowHTML(b,now){
   const ph=phase(b,now), t=timer(b,now), p=isPearl(b.item);
   let acts;
   if(openWaste===b.id)acts=`<div class="acts"><span>報廢多少？${p?"":`（這筆共 ${bk(b)} 桶）`}</span>${wasteChips(b.id,p,bk(b),b.size)}<button class="btn" data-cancel>取消</button></div>`;
-  else if(confirmDel===b.id)acts=`<div class="acts"><button class="btn bad" data-del="${b.id}">確定刪除這筆</button><button class="btn" data-cancel>不刪</button></div>`;
+  else if(confirmDel===b.id)acts=`<div class="acts">${needPinFor(b)?`<span>這筆超過 ${FREE_UNDO_MIN} 分鐘，要店長密碼才能刪</span>${pinField()}`:""}<button class="btn bad" data-del="${b.id}">確定刪除這筆</button><button class="btn" data-cancel>不刪</button></div>`;
   else if(ph==="cook")acts=`<div class="acts"><button class="btn pri" data-ready="${b.id}">已起鍋</button><button class="btn ghost" data-delask="${b.id}">誤按刪除</button></div>`;
   else acts=`<div class="acts">${isSingle(b.item)&&!onCounter(b)?`<button class="btn pri" data-tocounter="${b.id}">移到檯面</button>`:`<button class="btn pri" data-done="${b.id}">用完了</button>`}<button class="btn" data-wopen="${b.id}">報廢</button><button class="btn ghost" data-delask="${b.id}">誤按刪除</button></div>`;
   return `<div class="row" data-phase="${ph}"><div class="row-top">${isSingle(b.item)?`<span class="loc" data-loc="${onCounter(b)?"counter":"standby"}">${onCounter(b)?LOC.counter:LOC.standby}</span>`:""}<span class="left" data-left="${b.id}">${fmtLeft(t.to-now)}</span>
@@ -694,7 +701,7 @@ function renderItemSheet(k){
 function topRowHTML(t,now){
   const ph=topPhase(t,now),bx=t.boxes||1;let acts;
   if(openWaste===t.id)acts=`<div class="acts"><span>報廢幾盒？</span>${Array.from({length:bx},(_,i)=>bx-i).map(v=>`<button class="btn bad" data-twaste="${t.id}" data-f="${v}">${v} 盒</button>`).join("")}<button class="btn" data-cancel>取消</button></div>`;
-  else if(confirmDel===t.id)acts=`<div class="acts"><button class="btn bad" data-tdel="${t.id}">確定刪除這筆</button><button class="btn" data-cancel>不刪</button></div>`;
+  else if(confirmDel===t.id)acts=`<div class="acts">${needPinFor(t)?`<span>這筆超過 ${FREE_UNDO_MIN} 分鐘，要店長密碼才能刪</span>${pinField()}`:""}<button class="btn bad" data-tdel="${t.id}">確定刪除這筆</button><button class="btn" data-cancel>不刪</button></div>`;
   else acts=`<div class="acts"><button class="btn pri" data-tdone="${t.id}">用完了</button><button class="btn" data-wopen="${t.id}">報廢</button><button class="btn ghost" data-delask="${t.id}">誤按刪除</button></div>`;
   return `<div class="row" data-phase="${ph}"><div class="row-top"><span class="left" style="font-family:var(--f-body)">${topLeft(t,now)}</span>
     <span class="note">${bx} 盒・效期梯次 ${batchLabel(t)}${t.by?.length?`・${t.by.join("、")}`:""}</span></div>${acts}</div>`;
@@ -714,7 +721,8 @@ function renderTopSheet(n){
     <p class="lbl">③ 誰做的？（一個人做就選一個，有人幫忙就多選）</p>
     <div class="acts staff">${staff.map(p=>`<button class="tab" data-staff="${p}" aria-pressed="${selStaff.includes(p)}">${p}</button>`).join("")}<button class="tab" data-staffedit aria-pressed="${staffEdit}">${staff.length?"編輯人員":"＋ 新增人員"}</button></div>
     ${staffEdit?`<div class="merge"><form class="field" id="staffform"><input id="staffname" maxlength="8" placeholder="員工名字" autocomplete="off"><button class="btn pri" type="submit">加入</button></form>
-      ${staff.length?`<div class="acts">${staff.map(p=>`<button class="btn ghost" data-staffrm="${p}">✕ ${p}</button>`).join("")}</div>`:""}</div>`:""}
+      ${staff.length?`<div class="acts">${staffDel?`<div class="confirm"><b>確定把「${staffDel}」從名單移除？</b>${pinField()}<div class="acts"><button class="btn bad" data-staffrmok>移除</button><button class="btn" data-staffrmno>取消</button></div></div>`
+        :staff.map(p=>`<button class="btn ghost" data-staffrm="${p}">✕ ${p}</button>`).join("")}</div>`:""}</div>`:""}
     <p class="lbl">④ 做好了・效期梯次 ${md(now)}-${md(exp)}</p>
     <div class="big3" style="grid-template-columns:repeat(${qs.length+1},minmax(0,1fr))">${qs.map(q=>`<button class="size ${s.portions===q?"sug2":""}" data-tadd="${n}" data-q="${q}">${q}<small class="unit">份</small><small>${q*T.box} 盒</small></button>`).join("")}
       <form class="size custom" id="tqform"><input id="tq" type="number" inputmode="numeric" min="1" max="99" placeholder="其他" aria-label="自訂份數"><button class="btn pri" type="submit">登記</button></form></div>
@@ -761,10 +769,15 @@ function renderRecords(){
   const head=`<div class="sheet-head"><h3>紀錄</h3><button class="btn" data-close>關閉</button></div>
     <div class="seg" role="group" aria-label="檢視"><button class="tab" data-rv="day" aria-pressed="${recView==="day"}">每日用量</button><button class="tab" data-rv="avg" aria-pressed="${recView==="avg"}">星期平均</button></div>`;
   const dayName=md(recDay??startOfDay(Date.now()));
-  const del=recView!=="day"?"":delMode?`<div class="confirm"><b>確定要刪除 ${dayName}${delMode==="day"?" 的全部紀錄":`「${delMode}」的紀錄`}嗎？</b><p class="note">${delMode==="day"?"這一天所有品項":`這一天「${delMode}」`}煮過、用完、報廢的紀錄${delMode==="day"||topBy[delMode]?"和冰箱點數":""}會清掉，包含正在計時、檯面和冰箱裡的。刪除後沒辦法復原。</p>
-      <div class="acts"><button class="btn bad" data-delok>確定刪除</button><button class="btn" data-delno>取消</button></div></div>`
+  const del=recView!=="day"?"":delMode?`<div class="confirm"><b>確定要刪除 ${dayName}${delMode==="day"?" 的全部紀錄":`「${delMode}」的紀錄`}嗎？</b><p class="note">${delMode==="day"?"這一天所有品項":`這一天「${delMode}」`}煮過、用完、報廢的紀錄${delMode==="day"||topBy[delMode]?"和冰箱點數":""}會清掉，包含正在計時、檯面和冰箱裡的。刪除後 ${TRASH_DAYS} 天內可以在下面「最近刪除」復原。</p>
+      <div class="acts">${pinField()}<button class="btn bad" data-delok>確定刪除</button><button class="btn" data-delno>取消</button></div></div>`
     :`<div class="acts"><button class="btn ghost" data-delask2="day">刪除 ${dayName} 全部紀錄</button><span class="note">要刪單一品項，按表格最右邊的「刪除」</span></div>`;
-  const demo=`<div class="demo-row">${del}</div><p class="status">${cloud.on?`店號 ${shopCode}・${cloud.status}。全店手機共用同一份紀錄。 `:"紀錄存在這台裝置的瀏覽器裡。清除瀏覽器資料或換裝置就看不到。"}配料的實際用量要靠每天點數冰箱才算得出來。</p>${cloud.on?`<button class="btn ghost xs" data-logout>換店號</button>`:""}`;
+  const tr=[...trash].sort((a,b)=>b.startAt-a.startAt);
+  const trashBox=recView!=="day"?"":`<div class="trash"><p class="lbl">最近刪除（${TRASH_DAYS} 天內可復原）</p>${tr.length?tr.map(g=>`<div class="trow"><span>${g.label}<small>${md(g.startAt)} ${hm(g.startAt)} 刪除</small></span><button class="btn xs" data-restore="${g.id}">復原</button></div>`).join(""):`<p class="note">沒有刪除的紀錄</p>`}</div>`;
+  const pinBox=pinEdit?`<form class="field pinform" id="pinform">${pinHash?`<input id="pinold" type="password" inputmode="numeric" autocomplete="off" placeholder="目前密碼">`:""}<input id="pinnew" type="password" inputmode="numeric" autocomplete="off" placeholder="新密碼（4 位數以上）"><button class="btn pri" type="submit">儲存</button></form>`
+    :`<button class="btn ghost xs" data-pinedit>${pinHash?"更改店長密碼":"設定店長密碼"}</button>`;
+  const pinNote=pinHash?"":`<p class="note warn-note">還沒設定店長密碼：任何人都能刪除整天的紀錄。建議先設定。</p>`;
+  const demo=`<div class="demo-row">${del}</div>${trashBox}${pinNote}<div class="acts">${pinBox}</div><p class="status">${cloud.on?`店號 ${shopCode}・${cloud.status}。全店手機共用同一份紀錄。 `:"紀錄存在這台裝置的瀏覽器裡。清除瀏覽器資料或換裝置就看不到。"}配料的實際用量要靠每天點數冰箱才算得出來。</p>${cloud.on?`<button class="btn ghost xs" data-logout>換店號</button>`:""}`;
   if(recView==="day"){
     const ds=recDay??startOfDay(Date.now()), rows=dayRecords(ds);
     let body="",last="";
@@ -793,7 +806,7 @@ function renderSheet(){
   else if(sheet.startsWith("top:"))renderTopSheet(sheet.slice(4));
   else renderItemSheet(sheet);
 }
-function openSheet(s){sheet=s;lateOk=false;openWaste=confirmDel=null;pearlMode="cook";mergeAmt=0;delMode=null;staffEdit=false;renderSheet()}
+function openSheet(s){sheet=s;staffDel=null;pinEdit=false;lateOk=false;openWaste=confirmDel=null;pearlMode="cook";mergeAmt=0;delMode=null;staffEdit=false;renderSheet()}
 function closeSheet(){sheet=null;renderSheet()}
 
 /* ===== pearl suggestion & reminders ===== */
@@ -927,6 +940,31 @@ function addTea(k,z,cnt,now){
   addBatch({item:k,size,buckets:bucketsFor(k,size),carried,parts,big:!!byKey[k].pot&&z===3,startAt:now,readyAt:now,expireAt:now+TEA_LIFE});
   toast(`${k} ${amt(k,size)} 效期到 ${hm(now+TEA_LIFE)}`);
 }
+/* ===== safety: deleted records go to a 14-day trash, and big deletions need the manager PIN ===== */
+const TRASH_DAYS=14, FREE_UNDO_MIN=10;
+function toTrash(label,{bt=[],tp=[],fridge=null,extra=null,big=[]}={}){
+  if(!bt.length&&!tp.length&&!fridge&&!extra&&!big.length)return;
+  trash.push(clean({id:newId(),startAt:Date.now(),label,bt,tp,fridge,extra,big}));
+}
+function restoreTrash(id){
+  const g=trash.find(x=>x.id===id);if(!g)return;
+  const has=(arr,x)=>arr.some(y=>y.id===x.id);
+  (g.bt||[]).forEach(x=>{if(!has(batches,x))batches.push(x)});(g.tp||[]).forEach(x=>{if(!has(tops,x))tops.push(x)});
+  if(g.fridge)Object.entries(g.fridge).forEach(([k,v])=>fridgeLog[k]={...(fridgeLog[k]||{}),...v});
+  if(g.extra)Object.entries(g.extra).forEach(([k,v])=>topExtra[k]={...(topExtra[k]||{}),...v});
+  (g.big||[]).forEach(k=>bigDays.add(k));
+  trash=trash.filter(x=>x.id!==id);toast(`已復原：${g.label}`);
+}
+function purgeTrash(){const cut=Date.now()-TRASH_DAYS*D;if(trash.some(t=>t.startAt<cut))trash=trash.filter(t=>t.startAt>=cut)}
+async function hashPin(pin){const txt=(shopCode||"local")+":"+pin;
+  try{const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(txt));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
+  catch(e){let h=0;for(const c of txt)h=(h*31+c.charCodeAt(0))|0;return "s"+h}}
+const pinField=()=>pinHash?`<input id="pinin" class="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="店長密碼">`:"";
+async function pinOk(){if(!pinHash)return true;const v=($("pinin")?.value||"").trim();if(!v){toast("請輸入店長密碼");return false}
+  if(await hashPin(v)===pinHash)return true;toast("店長密碼不對");$("pinin").value="";return false}
+const needPinFor=x=>!!pinHash&&Date.now()-(x.startAt||0)>FREE_UNDO_MIN*M;
+function guarded(fn){(async()=>{if(await pinOk())fn()})()}
+
 /* ===== events ===== */
 document.addEventListener("click",e=>{
   const t=e.target.closest("button");if(!t)return;const d=t.dataset;
@@ -947,17 +985,25 @@ document.addEventListener("click",e=>{
   if(d.done){openWaste=confirmDel=null;patch(batches,d.done,{status:"done",waste:0,wasteBucket:0,endAt:Date.now()});toast("已標記用完");return render()}
   if(d.staff){selStaff=selStaff.includes(d.staff)?selStaff.filter(n=>n!==d.staff):[...selStaff,d.staff];save();return renderSheet()}
   if("staffedit" in d){staffEdit=!staffEdit;renderSheet();if(staffEdit)setTimeout(()=>$("staffname")?.focus(),30);return}
-  if(d.staffrm){staff=staff.filter(n=>n!==d.staffrm);selStaff=selStaff.filter(n=>n!==d.staffrm);save();return renderSheet()}
+  if(d.staffrm){staffDel=d.staffrm;return renderSheet()}
+  if("staffrmno" in d){staffDel=null;return renderSheet()}
+  if("staffrmok" in d)return guarded(()=>{const n=staffDel;staff=staff.filter(x=>x!==n);selStaff=selStaff.filter(x=>x!==n);staffDel=null;toast(`已移除 ${n}`);render()});
   if("logout" in d){try{localStorage.removeItem(LOCAL_KEY)}catch(e){}location.reload();return}
   if(d.delask2){delMode=d.delask2;return renderSheet()}
   if("delno" in d){delMode=null;return renderSheet()}
-  if("delok" in d){
+  if("delok" in d)return guarded(()=>{
     const ds=recDay??startOfDay(Date.now()),de=ds+D,k=dayKey(ds),inDay=t=>t.startAt>=ds&&t.startAt<de;
-    if(delMode==="day"){batches=batches.filter(b=>!inDay(b));tops=tops.filter(t=>!inDay(t));delete fridgeLog[k];delete topExtra[k];
+    if(delMode==="day"){const bt=batches.filter(inDay),tp=tops.filter(inDay),big=[...bigDays].filter(x=>x.startsWith(k+"|"));
+      toTrash(`${md(ds)} 全部紀錄`,{bt,tp,fridge:fridgeLog[k]?{[k]:fridgeLog[k]}:null,extra:topExtra[k]?{[k]:topExtra[k]}:null,big});
+      batches=batches.filter(b=>!inDay(b));tops=tops.filter(t=>!inDay(t));delete fridgeLog[k];delete topExtra[k];
       bigDays=new Set([...bigDays].filter(x=>!x.startsWith(k+"|")));toast(`已刪除 ${md(ds)} 全部紀錄`)}
-    else if(delMode){const n=delMode;batches=batches.filter(b=>!(b.item===n&&inDay(b)));tops=tops.filter(t=>!(t.name===n&&inDay(t)));
+    else if(delMode){const n=delMode,bt=batches.filter(b=>b.item===n&&inDay(b)),tp=tops.filter(t=>t.name===n&&inDay(t));
+      toTrash(`${md(ds)}「${n}」`,{bt,tp,fridge:fridgeLog[k]?.[n]?{[k]:{[n]:fridgeLog[k][n]}}:null,extra:topExtra[k]?.[n]?{[k]:{[n]:topExtra[k][n]}}:null,big:bigDays.has(k+"|"+n)?[k+"|"+n]:[]});
+      batches=batches.filter(b=>!(b.item===n&&inDay(b)));tops=tops.filter(t=>!(t.name===n&&inDay(t)));
       if(fridgeLog[k])delete fridgeLog[k][n];if(topExtra[k])delete topExtra[k][n];bigDays.delete(k+"|"+n);toast(`已刪除 ${md(ds)}「${n}」的紀錄`)}
-    delMode=null;return render()}
+    delMode=null;render()});
+  if(d.restore){restoreTrash(d.restore);return render()}
+  if("pinedit" in d){pinEdit=!pinEdit;return renderSheet()}
   if(d.b){const b=batches.find(x=>x.id===d.b);if(!b)return;const parts=partsOf(b),p=parts[+d.i];if(!p)return;
     if("pused" in d){parts.splice(+d.i,1);if(!parts.length){b.status="done";b.endAt=Date.now()}toast("檯面這桶用完了")}
     else if("pfridge" in d){p.loc="fridge";toast(`${b.item} 收進冰箱`)}
@@ -968,7 +1014,8 @@ document.addEventListener("click",e=>{
   if(d.waste){const b=batches.find(x=>x.id===d.waste),f=+d.f,p=isPearl(b.item);openWaste=null;
     patch(batches,d.waste,{status:"waste",waste:p?Math.round(b.size*f):f,wasteBucket:f,endAt:Date.now()});toast(`已記報廢 ${f} ${p?`鍋（${fmt(Math.round(b.size*f))}g）`:"桶"}`);return render()}
   if(d.delask){confirmDel=d.delask;openWaste=null;return renderSheet()}
-  if(d.del){confirmDel=null;batches=batches.filter(b=>b.id!==d.del);toast("已刪除");return render()}
+  if(d.del){const b=batches.find(x=>x.id===d.del);if(!b)return;const go=()=>{confirmDel=null;toTrash(`${b.item} ${amt(b.item,b.size)}（${md(b.startAt)} ${hm(b.startAt)}）`,{bt:[b]});batches=batches.filter(x=>x.id!==b.id);toast("已刪除，14 天內可在紀錄裡復原");render()};
+    return needPinFor(b)?guarded(go):go()}
   if("cancel" in d){openWaste=confirmDel=null;return renderSheet()}
   if(d.off){const k=dayKey(Date.now());(stopped[k]??=[]).includes(d.off)||stopped[k].push(d.off);offToday.push(d.off+k);renderAlerts(Date.now(),true);return toast(`今天不再提醒${d.off}`)}
   /* expired notice */
@@ -984,7 +1031,8 @@ document.addEventListener("click",e=>{
   if(d.tadd)return addTop(d.tadd,+d.q||1);
   if(d.tdone){openWaste=confirmDel=null;const t=tops.find(x=>x.id===d.tdone);patch(tops,d.tdone,{status:"done",wasteBucket:0,endAt:Date.now()});toast("已標記用完");return render()}
   if(d.twaste){openWaste=null;const t=tops.find(x=>x.id===d.twaste);patch(tops,d.twaste,{status:"waste",wasteBucket:+d.f,endAt:Date.now()});toast(`已記報廢 ${d.f} 盒`);return render()}
-  if(d.tdel){confirmDel=null;const t=tops.find(x=>x.id===d.tdel);tops=tops.filter(x=>x.id!==d.tdel);toast("已刪除");return render()}
+  if(d.tdel){const t=tops.find(x=>x.id===d.tdel);if(!t)return;const go=()=>{confirmDel=null;toTrash(`${t.name} ${t.boxes||1} 盒（${batchLabel(t)}）`,{tp:[t]});tops=tops.filter(x=>x.id!==t.id);toast("已刪除，14 天內可在紀錄裡復原");render()};
+    return needPinFor(t)?guarded(go):go()}
   /* records */
   if(d.rv){recView=d.rv;delMode=null;return renderSheet()}
   if(d.wd){recWd=+d.wd;return renderSheet()}
@@ -999,6 +1047,10 @@ document.addEventListener("change",e=>{
   setFridge(sheet.slice(4),v);render();
 });
 document.addEventListener("submit",e=>{
+  if(e.target.id==="pinform"){e.preventDefault();(async()=>{
+    if(pinHash&&await hashPin(($("pinold")?.value||"").trim())!==pinHash){toast("目前密碼不對");return}
+    const v=($("pinnew").value||"").trim();if(v.length<4){toast("新密碼至少 4 位");return}
+    pinHash=await hashPin(v);pinEdit=false;toast("店長密碼已儲存");render()})();return}
   if(e.target.id==="gateform"){e.preventDefault();enterShop($("gatecode").value);return}
   if(e.target.id==="staffform"){e.preventDefault();const n=$("staffname").value.trim();if(!n)return;
     if(!staff.includes(n))staff.push(n);if(!selStaff.includes(n))selStaff=[...selStaff,n];save();renderSheet();setTimeout(()=>$("staffname")?.focus(),30);return}
