@@ -350,7 +350,7 @@ const $=id=>document.getElementById(id);
 /* ===== state (saved in this device's browser) ===== */
 let batches=[], tops=[], bigDays=new Set(); /* "YYYY-MM-DD|品項": that item had a big order that day */
 const topItems=TOPS.map(t=>t.n);
-const DEFAULT_STAFF=["力瑜","予諠","Jessie","Vicky","晨蕊","以馨","小唐","田祈","ㄍㄨㄅ","微媛","小潔","庭瑋"];
+const DEFAULT_STAFF=["力瑜","予諠","Jessie","Vicky","晨蕊","以馨","小唐","田祈","ㄍㄨㄣ","微媛","小潔","庭瑋"];
 let lateOk=false, mergeAmt=0, delMode=null, staff=[...DEFAULT_STAFF], selStaff=[], staffEdit=false;
 let page="tea", sheet=null, openWaste=null, confirmDel=null, pearlMode="cook";
 let recView="day", recDay=null, recWd=new Date().getDay();
@@ -486,7 +486,13 @@ function tidy(b){const m={};partsOf(b).forEach(p=>{if(p.amt>1e-9)m[p.loc]=(m[p.l
 const live=k=>batches.filter(b=>b.item===k&&b.status==="active").sort((a,b)=>(onCounter(a)?0:1)-(onCounter(b)?0:1)||a.expireAt-b.expireAt);
 const itemHasCounter=k=>isTea(k)&&batches.some(b=>b.item===k&&b.status==="active"&&hasLoc(b,"counter"));
 /* when nothing is on the counter, the oldest standby bucket moves up (fridge stays put until someone takes it out) */
-function promoteAll(){
+/* staff names that were typed wrong earlier: fix them everywhere, including saved records */
+const RENAME={"ㄍㄨㄅ":"ㄍㄨㄣ"};
+function fixNames(){const f=n=>RENAME[n]||n;
+  if(staff.some(n=>RENAME[n]))staff=[...new Set(staff.map(f))];
+  if(selStaff.some(n=>RENAME[n]))selStaff=[...new Set(selStaff.map(f))];
+  tops.forEach(t=>{if(t.by?.some(n=>RENAME[n]))t.by=t.by.map(f)})}
+function promoteAll(){fixNames();
   batches.forEach(b=>{if(b.status==="active"&&isTea(b.item)){tidy(b);if(!b.parts.length){b.status="done";b.endAt=b.endAt||Date.now()}}});
   /* plain teas never go in the fridge (records from older versions move to standby) */
   batches.forEach(b=>{if(b.status==="active"&&isPlain(b.item)&&hasLoc(b,"fridge")){b.parts.forEach(p=>{if(p.loc==="fridge")p.loc="standby"});tidy(b)}});
