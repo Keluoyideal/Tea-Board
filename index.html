@@ -174,6 +174,8 @@ main{flex:1;min-height:0;display:grid}
 .confirm{display:flex;flex-direction:column;gap:8px;border:2px solid var(--bad);background:var(--bad-bg);border-radius:10px;padding:10px 12px;width:100%}
 .confirm b{color:var(--bad)}
 .staff .tab[aria-pressed="true"]{background:var(--top);border-color:var(--top);color:var(--surface)}
+.recipe{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted);border:1px dashed var(--line);border-radius:8px;padding:6px 10px}
+.recipe b{color:var(--ink);font-size:12px}
 .merge{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--bg);font-size:13px;color:var(--muted)}
 .loc{font-size:13px;font-weight:900;padding:2px 10px;border-radius:999px;background:var(--accent);color:var(--accent-ink);align-self:center}
 .loc[data-loc="standby"]{background:var(--sunk);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
@@ -309,10 +311,14 @@ td small{color:var(--muted);font-size:11px}
 <script>
 /* ===== items ===== */
 const ITEMS=[
-  {k:"冬青",b:"#6b4426"},{k:"秋青",b:"#2e7d3a"},{k:"春青",b:"#c0392b"},{k:"綠茶",b:"#1e1e1e"},
-  {k:"夏青",b:"#2563a8"},{k:"紅茶",b:"#1e1e1e"},
-  {k:"香鳶尾青茶",b:"#ece6d6",fg:"#3a3527",per:1.5,limited:true,takeout:true},
-  {k:"國寶茶",b:"#7a7f78",pot:true,mults:{1:.8,2:1.5,3:2.3}},{k:"菊花茶",b:"#7a7f78",pot:true,mults:{1:.8,2:1.5,3:2.3}},{k:"蕎麥茶",b:"#7a7f78",pot:true,per:1.5},{k:"玄米茶",b:"#7a7f78",pot:true,per:1.5},{k:"奶茶",b:"#7a7f78",pot:true,per:1.5},
+  {k:"冬青",b:"#6b4426",brew:11},{k:"秋青",b:"#2e7d3a",brew:13},{k:"春青",b:"#c0392b",brew:11},{k:"綠茶",b:"#1e1e1e",brew:5},
+  {k:"夏青",b:"#2563a8",brew:13},{k:"紅茶",b:"#1e1e1e",brew:10},
+  {k:"香鳶尾青茶",b:"#ece6d6",fg:"#3a3527",per:1.5,limited:true,takeout:true,brew:11},
+  {k:"國寶茶",b:"#7a7f78",pot:true,brew:10,rec:{leaf:[70,140,210],water:[2500,5000,7500],ice:[2100,4200,6300],steep:"燜 10 分"}},
+  {k:"菊花茶",b:"#7a7f78",pot:true,brew:17,rec:{leaf:[30,60,90],water:[2800,5600,8400],ice:[1800,3600,5400],steep:"加蓋煮 3 分（電磁爐最大火力）・燜 14 分"}},
+  {k:"蕎麥茶",b:"#7a7f78",pot:true,brew:20,rec:{leaf:[120,280,440],water:[2700,6300,9900],ice:[1800,4200,6600],steep:"燜 20 分"}},
+  {k:"玄米茶",b:"#7a7f78",pot:true,brew:20,rec:{leaf:[120,280,440],water:[2700,6300,9900],ice:[1800,4200,6600],steep:"燜 20 分"}},
+  {k:"奶茶",b:"#7a7f78",pot:true,brew:14,rec:{leaf:[120,280,400],water:[2700,6300,9000],ice:[1800,4200,6000],cream:[360,840,1200],leafName:"天鑼紅茶",steep:"燜 14 分"}},
   {k:"琥珀珍珠",b:"#8a5424",pearl:true},{k:"蕎麥珍珠",b:"#6e5a45",pearl:true}
 ];
 /* toppings: boxes per 份, and how many boxes to keep in the fridge on busy / quiet days */
@@ -322,16 +328,20 @@ const TOPS=[
 ];
 const topBy=Object.fromEntries(TOPS.map(t=>[t.n,t]));
 const PEARL_SIZES=[500,1000,1500,2000,2500,3000];
+const PEARL_SWELL=1.6, PEARL_PER_CUP=150;
+const cupsOf=g=>Math.floor(g*PEARL_SWELL/PEARL_PER_CUP+1e-9);
 const TEA_MULTS=[1,2,3];
 const M=6e4,H=60*M,D=24*H;
 const TEA_LIFE=4*H, PEARL_COOK=1.5*H, PEARL_LIFE=3*H, PEARL_HEADSUP=15*M, TOP_DAYS=3, AVG_DAYS=28;
 const byKey=Object.fromEntries(ITEMS.map(i=>[i.k,i]));
 const isPearl=k=>!!byKey[k]?.pearl;
 const per=k=>byKey[k]?.per||1;
-const bucketsFor=(k,n)=>byKey[k]?.mults?.[n]??n*per(k);
+const LILY_ML=5000; /* one 百合桶 ≈ 5 L */
+const potLiters=(k,n)=>{const r=byKey[k]?.rec;if(!r)return null;const i=n-1;return (r.water[i]+r.ice[i]+(r.cream?.[i]||0))/1000};
+const bucketsFor=(k,n)=>{const L=potLiters(k,n);return L!=null?Math.round(L*1000/LILY_ML*10)/10:byKey[k]?.mults?.[n]??n*per(k)};
 const bk=b=>b.buckets??bucketsFor(b.item,b.size);
 const fmt=n=>(Math.round(n*100)/100).toLocaleString("zh-TW");
-const amt=(k,n)=>isPearl(k)?`${fmt(n)}g`:byKey[k]?.pot?`${n}倍・${bucketsFor(k,n)}桶`:`${bucketsFor(k,n)}桶`;
+const amt=(k,n)=>isPearl(k)?`${fmt(n)}g・約${cupsOf(n)}杯`:byKey[k]?.pot?`${n}倍・${bucketsFor(k,n)}桶`:`${bucketsFor(k,n)}桶`;
 /* cooked and wasted amount of one record, in its own unit (桶 / g / 份) */
 const cookedOf=b=>b.kind==="top"?(b.boxes||1):isPearl(b.item)?b.size:bk(b);
 const wasteOf=b=>b.kind==="top"?(b.wasteBucket||0):isPearl(b.item)?(b.waste||0):(b.wasteBucket||0);
@@ -422,7 +432,7 @@ function load(){loadDevice();if(FIREBASE_CONFIG&&window.firebase){
 
 /* ===== time helpers ===== */
 /* early staff start cooking at 8:00; shop is open 10:00–21:00 */
-const PREP_H=8, OPEN_H=10, CLOSE_H=21;
+const PREP_H=8, OPEN_H=10, CLOSE_H=21, LAST_PEARL_H=17;
 /* tea lasts 4h, so the last brew of the day is 17:00 (good until closing at 21:00) */
 const LAST_TEA_H=CLOSE_H-TEA_LIFE/H;
 let stopped={}; /* dayKey -> [品項] staff marked as finished for the day */
@@ -440,7 +450,16 @@ const WK="日一二三四五六";
 const startOfDay=t=>{const d=new Date(t);d.setHours(0,0,0,0);return d.getTime()};
 const dayDiff=(a,b)=>Math.round((startOfDay(a)-startOfDay(b))/D);
 /* 三四五 is the busy stretch; 一二 and weekends are quieter */
-const isBusyDefault=t=>{const w=new Date(t).getDay();return w>=3&&w<=5};
+/* Taiwan government days off (人事行政總處), 2026–2027 */
+const HOLIDAYS={"2026-01-01":"元旦","2026-02-14":"春節","2026-02-15":"春節","2026-02-16":"除夕","2026-02-17":"春節","2026-02-18":"春節","2026-02-19":"春節","2026-02-20":"春節","2026-02-21":"春節","2026-02-22":"春節",
+  "2026-02-27":"和平紀念日","2026-02-28":"和平紀念日","2026-04-03":"兒童節","2026-04-04":"兒童節","2026-04-05":"清明節","2026-04-06":"清明節","2026-05-01":"勞動節",
+  "2026-06-19":"端午節","2026-09-25":"中秋節","2026-09-28":"教師節","2026-10-09":"國慶日","2026-10-10":"國慶日","2026-10-24":"光復節","2026-10-25":"光復節","2026-10-26":"光復節","2026-12-25":"行憲紀念日",
+  "2027-01-01":"元旦","2027-02-04":"春節","2027-02-05":"除夕","2027-02-06":"春節","2027-02-07":"春節","2027-02-08":"春節","2027-02-09":"春節","2027-02-10":"春節",
+  "2027-02-27":"和平紀念日","2027-02-28":"和平紀念日","2027-03-01":"和平紀念日","2027-04-03":"兒童節","2027-04-04":"兒童節","2027-04-05":"清明節","2027-04-06":"清明節","2027-04-30":"勞動節","2027-05-01":"勞動節",
+  "2027-06-09":"端午節","2027-09-15":"中秋節","2027-09-28":"教師節","2027-10-09":"國慶日","2027-10-10":"國慶日","2027-10-11":"國慶日","2027-10-23":"光復節","2027-10-24":"光復節","2027-10-25":"光復節",
+  "2027-12-24":"行憲紀念日","2027-12-25":"行憲紀念日","2027-12-31":"元旦"};
+function dayKind(t){const w=new Date(t).getDay(),h=HOLIDAYS[dayKey(t)];return h?h:w===0||w===6?"假日":w===1?"週一":null}
+const isBusyDefault=t=>!dayKind(t);
 const isBusy=t=>busyOverride[dayKey(t)]??isBusyDefault(t);
 const WD_ORDER=[1,2,3,4,5,6,0];
 function fmtLeft(ms){const neg=ms<0;ms=Math.abs(ms);return (neg?"-":"")+Math.floor(ms/H)+":"+pad(Math.floor(ms%H/M))+":"+pad(Math.floor(ms%M/1e3))}
@@ -522,19 +541,19 @@ function card(i,now){
   const style=`--bucket:${i.b};--liq:${i.b}`+(i.fg?`;--bandfg:${i.fg}`:"");
   const tt=todayTotals(batches,x=>x.item===i.k);
   const tally=tallyHTML(tt.c,tt.w,p?"g":"桶");
-  const al=p?pearlAlertMap[i.k]:null;
+  const al=pearlAlertMap[i.k]||null;
   const alertLine=al?`<div class="alertline ${al.urgent?"urgent":""}">${al.msg.replace(/<\/?b>/g,"").replace(i.k+" ","")}</div>`:"";
   if(!b){
     const s=p?suggest(i.k):null;
     const rule=p?"煮1.5h・效3h":i.limited?"限定":"效期4h";
     return `<button class="card ${p?"pearl":""} ${isStopped(i.k,now)?"stopped":""}" data-open="${i.k}" style="${style}" data-phase="${al?(al.urgent?"dead":"warn"):"none"}">
       <div class="band"><b class="${i.k.length>4?"long":""}">${i.k}</b><small>${rule}</small></div>
-      <div class="cbody"><div>${al?alertLine:`<div class="idle">${isStopped(i.k,now)?"今天不煮了":"＋ 點一下"+(p?"下鍋":"登記")}</div>`}${s&&s.rec?`<div class="sug">建議 ${fmt(s.rec)}g</div>`:""}</div></div>${tally}</button>`;
+      <div class="cbody"><div>${al?alertLine:`<div class="idle">${isStopped(i.k,now)?"今天不煮了":p&&(now-startOfDay(now))/H>=LAST_PEARL_H?`${LAST_PEARL_H}:00 後不再下鍋`:"＋ 點一下"+(p?"下鍋":"登記")}</div>`}${s&&s.rec?`<div class="sug">建議 ${fmt(s.rec)}g</div>`:""}</div></div>${tally}</button>`;
   }
   const ph=phase(b,now), t=timer(b,now);
   return `<button class="card ${p?"pearl":""}" data-open="${i.k}" data-phase="${ph}" style="${style}">
     <div class="band"><b class="${i.k.length>4?"long":""}">${i.k}</b><small>${p?amt(i.k,b.size):locSummary(i.k)}</small></div>
-    <div class="cbody"><div><div class="left" data-left="${b.id}">${fmtLeft(t.to-now)}</div><div class="cap">${!p&&!itemHasCounter(i.k)?"都在冰箱・":""}${t.cap}</div>${alertLine}</div>${p&&ph==="cook"?potSVG(b.id):""}</div>
+    <div class="cbody"><div><div class="left" data-left="${b.id}">${fmtLeft(t.to-now)}</div>${al&&!p?alertLine:`<div class="cap">${!p&&!itemHasCounter(i.k)?"都在冰箱・":""}${t.cap}</div>${alertLine}`}</div>${p&&ph==="cook"?potSVG(b.id):""}</div>
     <div class="bar"><i data-bar="${b.id}" style="width:${pct(t,now)}%"></i></div>${tally}${p&&L.length>1?`<span class="more">+${L.length-1}</span>`:""}</button>`;
 }
 function renderTeaBoard(){
@@ -581,7 +600,7 @@ function renderTopBoard(){
   const now=Date.now(),busy=isBusy(now+D);
   $("main").innerHTML=`<div class="tops">${topItems.map(n=>topCard(n,now)).join("")}</div>`;
   const tt=todayTotals(tops,()=>true);
-  $("strip").innerHTML=`<button class="tab" data-busy aria-pressed="${busy}">明天週${WK[new Date(now+D).getDay()]}：${busy?"忙":"不忙"} ⇄</button><span>配料 <b>${fmt(tt.c)}</b>盒 廢 <b class="${tt.w?"bad":""}">${fmt(tt.w)}</b>盒</span>
+  $("strip").innerHTML=`<button class="tab" data-busy aria-pressed="${busy}">明天週${WK[new Date(now+D).getDay()]}${dayKind(now+D)&&dayKind(now+D)!=="週一"&&dayKind(now+D)!=="假日"?"・"+dayKind(now+D):""}：${busy?"忙":"不忙"} ⇄</button><span>配料 <b>${fmt(tt.c)}</b>盒 廢 <b class="${tt.w?"bad":""}">${fmt(tt.w)}</b>盒</span>
     <button class="btn" data-records>紀錄</button>`;
 }
 function renderBoard(){
@@ -633,11 +652,12 @@ function renderItemSheet(k){
       <div class="modes"><button class="mode" data-mode="cook" aria-pressed="${cooking}">現在下鍋<small>${hm(now+PEARL_COOK)} 起鍋</small></button>
       <button class="mode" data-mode="done" aria-pressed="${!cooking}">已經煮好了<small>效期到 ${hm(now+PEARL_LIFE)}</small></button></div>
       ${s?`<p class="note">建議 ${s.rec?fmt(s.rec)+"g（外框）":"這時段可以不煮"}・依過去${s.group} ${s.days} 天同時段平均用 ${fmt(Math.round(s.avg))}g${s.skipped?`，已排除大單 ${s.skipped} 天`:""}</p>`:""}
-      <div class="big3">${PEARL_SIZES.map(z=>`<button class="size ${s&&s.rec===z?"sug2":""}" data-add="${z}">${fmt(z)}<small>g</small></button>`).join("")}</div>`;
+      <div class="big3">${PEARL_SIZES.map(z=>`<button class="size ${s&&s.rec===z?"sug2":""}" data-add="${z}">${fmt(z)}<small class="unit">g</small><small>約 ${cupsOf(z)} 杯</small></button>`).join("")}</div>`;
   }else{
     if(i.pot){
       add=`<p class="lbl">鍋煮好了・效期到 ${hm(now+TEA_LIFE)}・${itemHasCounter(k)?"檯面還有，全部放冰箱":"1 桶放檯面，其他放冰箱"}</p>
-      <div class="big3">${TEA_MULTS.map(n=>`<button class="size" data-add="${n}">${n}<small class="unit">倍</small><small>${bucketsFor(k,n)}桶${n===3?"・大單":""}</small></button>`).join("")}</div>`;
+      <div class="big3">${TEA_MULTS.map(n=>`<button class="size" data-add="${n}">${n}<small class="unit">倍</small><small>${bucketsFor(k,n)}桶${n===3?"・大單":""}</small></button>`).join("")}</div>
+      ${i.rec?`<div class="recipe"><b>配方（95°C・${i.rec.steep}）</b>${TEA_MULTS.map(n=>`<span>${n}倍：${i.rec.leafName||"茶葉"} ${i.rec.leaf[n-1]}g・水 ${i.rec.water[n-1]}ml・${i.rec.cream?`奶精 ${i.rec.cream[n-1]}g・`:""}冰塊 ${i.rec.ice[n-1]}g</span>`).join("")}</div>`:""}`;
     }else{
       const hcnt=itemHasCounter(k);
       const where=isTakeout(k)?(hcnt?`${per(k)} 桶都放冰箱`:`檯面 1 桶・冰箱 ${fmt(per(k)-1)} 桶`):`放${hcnt?LOC.standby:LOC.counter}`;
@@ -769,25 +789,44 @@ function suggest(item){
 }
 let offToday=[];
 function pearlAlerts(now){
-  const today=startOfDay(now),out=[],open=today+OPEN_H*H,close=today+CLOSE_H*H;
-  if(now<today+PREP_H*H||now>=close)return out;
+  const today=startOfDay(now),out=[],open=today+OPEN_H*H,close=today+CLOSE_H*H,last=today+LAST_PEARL_H*H;
+  /* reminders run 8:00–17:00; after the last pot time nothing more is cooked */
+  if(now<today+PREP_H*H||now>last)return out;
   ITEMS.filter(i=>i.pearl).forEach(i=>{
     if(offToday.includes(i.k+dayKey(now))||isStopped(i.k,now))return;
     const L=batches.filter(b=>b.item===i.k&&b.status==="active");
     /* stock must last from opening until closing */
     const cover=L.length?Math.max(...L.map(b=>b.expireAt)):now;
     if(cover>=close)return;
-    const until=Math.max(cover,now<open?open:cover)-PEARL_COOK-now;if(until>PEARL_HEADSUP)return;
+    const want=Math.max(cover,now<open?open:cover)-PEARL_COOK,startBy=Math.min(want,last),isLast=want>=last;
+    const until=startBy-now;if(until>PEARL_HEADSUP)return;
     const urgent=until<=0;
-    const msg=!L.length?(now<open?`<b>${i.k}</b> 開店前要煮好，現在下鍋 ${hm(now+PEARL_COOK)} 起鍋`:`<b>${i.k}</b> 沒有了，現在下鍋 ${hm(now+PEARL_COOK)} 才有`)
+    const msg=!L.length?(now<open?`<b>${i.k}</b> 開店前要煮好，現在下鍋 ${hm(now+PEARL_COOK)} 起鍋`:`<b>${i.k}</b> 沒有了，現在下鍋 ${hm(now+PEARL_COOK)} 才有${isLast?"（最後一鍋）":""}`)
+      :isLast?`<b>${i.k}</b> 最後一鍋，${LAST_PEARL_H}:00 前要下鍋，過了就不煮`
       :urgent?`<b>${i.k}</b> ${hm(cover)} 到期，已晚 ${Math.round(-until/M)} 分鐘，快下鍋`
       :`<b>${i.k}</b> ${hm(cover)} 到期，${hm(cover-PEARL_COOK)} 前要下鍋`;
     out.push({k:i.k,msg,urgent});
   });return out;
 }
 let lastAlertKey="",alerting=new Set();
+const TEA_HEADSUP=5*M; /* remind this long before the brew needs to start */
+function teaAlerts(now){
+  const today=startOfDay(now),out=[],close=today+CLOSE_H*H;
+  if(now<today+PREP_H*H)return out;
+  ITEMS.filter(i=>i.brew).forEach(i=>{
+    if(isStopped(i.k,now)||offToday.includes(i.k+dayKey(now)))return;
+    const L=batches.filter(b=>b.item===i.k&&b.status==="active");
+    if(!L.length)return;                       /* nothing out: staff already know, no nagging */
+    const cover=Math.max(...L.map(b=>b.expireAt));
+    if(cover>=close)return;                    /* lasts until closing */
+    const brew=i.brew*M,startBy=cover-brew,until=startBy-now;
+    if(until>TEA_HEADSUP||now+brew>=close)return;
+    const urgent=until<=0;
+    out.push({k:i.k,urgent,tea:true,msg:urgent?`快下茶！約 ${i.brew} 分`:`${hm(startBy)} 下茶`});
+  });return out;
+}
 function renderAlerts(now,force){
-  const a=pearlAlerts(now),key=a.map(x=>x.msg).join("|"),sig=x=>x.k+(x.urgent?"!":"");
+  const a=[...pearlAlerts(now),...teaAlerts(now)],key=a.map(x=>x.k+x.msg).join("|"),sig=x=>x.k+(x.urgent?"!":"");
   const fresh=a.filter(x=>!alerting.has(sig(x)));alerting=new Set(a.map(sig));
   if(fresh.length)beep(fresh.some(x=>x.urgent)?3:2);
   if(key===lastAlertKey&&!force)return;const changed=key!==lastAlertKey;lastAlertKey=key;
