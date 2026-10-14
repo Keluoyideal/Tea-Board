@@ -190,6 +190,10 @@ main{flex:1;min-height:0;display:grid}
 .trow span{min-width:0;font-size:14px}.trow small{display:block;color:var(--muted);font-size:11px}
 .warn-note{color:var(--warn);font-weight:700}
 .pinform input{font:inherit;font-size:16px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);min-width:0;flex:1}
+.closed{display:flex;flex-direction:column;align-items:center;gap:4px;padding:22px 12px;border:2px dashed var(--line);border-radius:12px;color:var(--muted);text-align:center}
+.closed b{font-size:24px;color:var(--ink);font-weight:900}
+.trow .confirm{margin-top:6px}
+.trow{flex-wrap:wrap}
 .confirm{display:flex;flex-direction:column;gap:8px;border:2px solid var(--bad);background:var(--bad-bg);border-radius:10px;padding:10px 12px;width:100%}
 .confirm b{color:var(--bad)}
 .staff .tab[aria-pressed="true"]{background:var(--top);border-color:var(--top);color:var(--surface)}
@@ -368,7 +372,7 @@ const wasteOf=b=>b.kind==="top"?(b.wasteBucket||0):isPearl(b.item)?(b.waste||0):
 const $=id=>document.getElementById(id);
 
 /* ===== state (saved in this device's browser) ===== */
-let trash=[], pinHash=null, staffDel=null, pinEdit=false;
+let trashDel=null, trash=[], pinHash=null, staffDel=null, pinEdit=false;
 let batches=[], tops=[], bigDays=new Set(); /* "YYYY-MM-DD|品項": that item had a big order that day */
 const topItems=TOPS.map(t=>t.n);
 const DEFAULT_STAFF=["力瑜","予諠","Jessie","Vicky","晨蕊","以馨","小唐","田祈","ㄍㄨㄣ","微媛","小潔","庭瑋"];
@@ -459,6 +463,7 @@ const LAST_TEA_H=CLOSE_H-TEA_LIFE/H;
 let stopped={}; /* dayKey -> [品項] staff marked as finished for the day */
 const isStopped=(k,now)=>(stopped[dayKey(now)]||[]).includes(k);
 const pastLastTea=now=>{const h=(now-startOfDay(now))/H;return h>=LAST_TEA_H&&h<CLOSE_H};
+const isClosedNow=now=>shopState(now).s==="closed";
 function shopState(now){const h=(now-startOfDay(now))/H;
   if(h>=OPEN_H&&h<CLOSE_H)return{s:"open",t:"營業中"};
   if(h>=CLOSE_H||h<NIGHT_END_H)return{s:"closed",t:"打烊"};
@@ -583,7 +588,7 @@ function card(i,now){
     const rule=p?"煮1.5h・效3h":i.limited?"限定":"效期4h";
     return `<button class="card ${p?"pearl":""} ${isStopped(i.k,now)?"stopped":""}" data-open="${i.k}" style="${style}" data-phase="${al?(al.urgent?"dead":"warn"):"none"}">
       <div class="band"><b class="${i.k.length>4?"long":""}">${i.k}</b><small>${rule}</small></div>
-      <div class="cbody"><div>${al?alertLine:`<div class="idle">${isStopped(i.k,now)?"今天不煮了":p&&(now-startOfDay(now))/H>=LAST_PEARL_H?`${LAST_PEARL_H}:00 後不再下鍋`:"＋ 點一下"+(p?"下鍋":"登記")}</div>`}${s&&s.rec?`<div class="sug">建議 ${fmt(s.rec)}g</div>`:""}</div></div>${tally}</button>`;
+      <div class="cbody"><div>${al?alertLine:`<div class="idle">${isClosedNow(now)?"打烊中":isStopped(i.k,now)?"今天不煮了":p&&(now-startOfDay(now))/H>=LAST_PEARL_H?`${LAST_PEARL_H}:00 後不再下鍋`:"＋ 點一下"+(p?"下鍋":"登記")}</div>`}${s&&s.rec?`<div class="sug">建議 ${fmt(s.rec)}g</div>`:""}</div></div>${tally}</button>`;
   }
   const ph=phase(b,now), t=timer(b,now);
   return `<button class="card ${p?"pearl":""}" data-open="${i.k}" data-phase="${ph}" style="${style}">
@@ -703,9 +708,10 @@ function renderItemSheet(k){
   }
   const stop=isStopped(k,now)?`<button class="btn wide" data-unstop="${k}">今天不煮了・按這裡恢復<small>${p?"下鍋提醒會再出現":"卡片會恢復成可以登記"}</small></button>`
     :(p||pastLastTea(now))?`<button class="btn wide" data-stop="${k}">今天不煮了<small>${p?"不再提醒下鍋":"卡片會標成今天不煮"}</small></button>`:"";
+  const night=isClosedNow(now);
   const box=$("sheet-box");box.style.setProperty("--bucket",i.b);box.style.setProperty("--liq",i.b);
   box.innerHTML=`<div class="sheet-head"><span class="swatch"></span><h3>${k}</h3><button class="btn" data-close>關閉</button></div>
-    ${L.length?`<p class="lbl">線上 ${L.length} ${p?"鍋":"批"}</p><div class="rows">${L.map(b=>rowHTML(b,now)).join("")}</div>`:""}${add}${stop}`;
+    ${L.length?`<p class="lbl">線上 ${L.length} ${p?"鍋":"批"}</p><div class="rows">${L.map(b=>rowHTML(b,now)).join("")}</div>`:""}${night?`<div class="closed"><b>打烊了！明天再見</b><small>${CLOSE_H}:00–0${NIGHT_END_H}:00 不登記</small></div>`:add+stop}`;
 }
 
 /* ===== topping sheet ===== */
@@ -722,7 +728,7 @@ function renderTopSheet(n){
   const qs=Array.from({length:T.max},(_,i)=>i+1);
   const box=$("sheet-box");box.style.setProperty("--bucket","var(--top)");
   box.innerHTML=`<div class="sheet-head"><span class="swatch"></span><h3>${n}</h3><span class="grp-chip">1 份 = ${T.box} 盒</span><button class="btn" data-close>關閉</button></div>
-    <p class="lbl">① 做之前冰箱剩幾盒？${s.counted?"":"（還沒點數，先帶入系統裡的盒數）"}</p>
+    ${isClosedNow(now)?`<div class="closed"><b>打烊了！明天再見</b><small>${CLOSE_H}:00–0${NIGHT_END_H}:00 不登記</small></div>`:`<p class="lbl">① 做之前冰箱剩幾盒？${s.counted?"":"（還沒點數，先帶入系統裡的盒數）"}</p>
     <div class="stepper"><button class="btn" data-fr="-0.5" aria-label="少半盒">−</button><input id="frin" class="num" type="number" inputmode="decimal" step="0.1" min="0" value="${fmtBox(s.count)}" aria-label="冰箱剩幾盒"><span>盒</span><button class="btn" data-fr="0.5" aria-label="多半盒">＋</button>${s.counted?"":`<button class="btn" data-fr="0">數量正確</button>`}</div>
     <p class="note">${s.made?`冰箱 ${fmtBox(s.count)} 盒＋今天做 ${fmtBox(s.made)} 盒，共 ${fmtBox(s.have)} 盒。`:""}${s.exp?`其中 <b style="color:var(--bad)">${s.exp} 盒今晚 8 點要報廢</b>，`:""}能用的是 ${fmtBox(s.usable)} 盒。</p>
     <p class="lbl">② 明天（週${WK[new Date(s.tom).getDay()]}）要備多少</p>
@@ -736,7 +742,7 @@ function renderTopSheet(n){
         :staff.map(p=>`<button class="btn ghost" data-staffrm="${p}">✕ ${p}</button>`).join("")}</div>`:""}</div>`:""}
     <p class="lbl">④ 做好了・效期梯次 ${md(now)}-${md(exp)}</p>
     <div class="big3" style="grid-template-columns:repeat(${qs.length+1},minmax(0,1fr))">${qs.map(q=>`<button class="size ${s.portions===q?"sug2":""}" data-tadd="${n}" data-q="${q}">${q}<small class="unit">份</small><small>${q*T.box} 盒</small></button>`).join("")}
-      <form class="size custom" id="tqform"><input id="tq" type="number" inputmode="numeric" min="1" max="99" placeholder="其他" aria-label="自訂份數"><button class="btn pri" type="submit">登記</button></form></div>
+      <form class="size custom" id="tqform"><input id="tq" type="number" inputmode="numeric" min="1" max="99" placeholder="其他" aria-label="自訂份數"><button class="btn pri" type="submit">登記</button></form></div>`}
     ${L.length?`<p class="lbl">冰箱裡的梯次（先做的先用）</p><div class="rows">${L.map(t=>topRowHTML(t,now)).join("")}</div>`:""}`;
 }
 const topExpire=t=>startOfDay(t)+(TOP_DAYS+1)*D-1;
@@ -784,7 +790,8 @@ function renderRecords(){
       <div class="acts">${pinField()}<button class="btn bad" data-delok>確定刪除</button><button class="btn" data-delno>取消</button></div></div>`
     :`<div class="acts"><button class="btn ghost" data-delask2="day">刪除 ${dayName} 全部紀錄</button><span class="note">要刪單一品項，按表格最右邊的「刪除」</span></div>`;
   const tr=[...trash].sort((a,b)=>b.startAt-a.startAt);
-  const trashBox=recView!=="day"?"":`<div class="trash"><p class="lbl">最近刪除（${TRASH_DAYS} 天內可復原）</p>${tr.length?tr.map(g=>`<div class="trow"><span>${g.label}<small>${md(g.startAt)} ${hm(g.startAt)} 刪除</small></span><button class="btn xs" data-restore="${g.id}">復原</button></div>`).join(""):`<p class="note">沒有刪除的紀錄</p>`}</div>`;
+  const trashBox=recView!=="day"?"":`<div class="trash"><p class="lbl">最近刪除（${TRASH_DAYS} 天內可復原）</p>${tr.length?tr.map(g=>`<div class="trow"><span>${g.label}<small>${md(g.startAt)} ${hm(g.startAt)} 刪除</small></span>${trashDel===g.id?`<div class="confirm"><b>永久刪除後就救不回來了</b>${pinField()}<div class="acts"><button class="btn bad" data-trashok>永久刪除</button><button class="btn" data-trashno>取消</button></div></div>`
+      :`<span class="acts"><button class="btn xs" data-restore="${g.id}">復原</button><button class="btn xs ghost" data-trashdel="${g.id}">刪除</button></span>`}</div>`).join(""):`<p class="note">沒有刪除的紀錄</p>`}</div>`;
   const pinBox=pinEdit?`<form class="field pinform" id="pinform">${pinHash?`<input id="pinold" type="password" inputmode="numeric" autocomplete="off" placeholder="目前密碼">`:""}<input id="pinnew" type="password" inputmode="numeric" autocomplete="off" placeholder="新密碼（4 位數以上）"><button class="btn pri" type="submit">儲存</button></form>`
     :`<button class="btn ghost xs" data-pinedit>${pinHash?"更改店長密碼":"設定店長密碼"}</button>`;
   const pinNote=pinHash?"":`<p class="note warn-note">還沒設定店長密碼：任何人都能刪除整天的紀錄。建議先設定。</p>`;
@@ -1013,7 +1020,10 @@ document.addEventListener("click",e=>{
       batches=batches.filter(b=>!(b.item===n&&inDay(b)));tops=tops.filter(t=>!(t.name===n&&inDay(t)));
       if(fridgeLog[k])delete fridgeLog[k][n];if(topExtra[k])delete topExtra[k][n];bigDays.delete(k+"|"+n);toast(`已刪除 ${md(ds)}「${n}」的紀錄`)}
     delMode=null;render()});
-  if(d.restore){restoreTrash(d.restore);return render()}
+  if(d.restore){trashDel=null;restoreTrash(d.restore);return render()}
+  if(d.trashdel){trashDel=d.trashdel;return renderSheet()}
+  if("trashno" in d){trashDel=null;return renderSheet()}
+  if("trashok" in d)return guarded(()=>{const g=trash.find(x=>x.id===trashDel);trash=trash.filter(x=>x.id!==trashDel);trashDel=null;toast(`已永久刪除${g?"："+g.label:""}`);render()});
   if("pinedit" in d){pinEdit=!pinEdit;return renderSheet()}
   if(d.b){const b=batches.find(x=>x.id===d.b);if(!b)return;const parts=partsOf(b),p=parts[+d.i];if(!p)return;
     if("pused" in d){parts.splice(+d.i,1);if(!parts.length){b.status="done";b.endAt=Date.now()}toast("檯面這桶用完了")}
