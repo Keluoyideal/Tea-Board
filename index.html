@@ -484,10 +484,16 @@ const isBusy=t=>busyOverride[dayKey(t)]??isBusyDefault(t);
 const WD_ORDER=[1,2,3,4,5,6,0];
 function fmtLeft(ms){const neg=ms<0;ms=Math.abs(ms);return (neg?"-":"")+Math.floor(ms/H)+":"+pad(Math.floor(ms%H/M))+":"+pad(Math.floor(ms%M/1e3))}
 const readyAt=b=>b.readyAt||b.startAt;
-function phase(b,now){if(isPearl(b.item)&&now<readyAt(b))return"cook";const l=b.expireAt-now;return l<=0?"dead":l<30*M?"warn":"ok"}
+/* everything still out at closing (21:00) is thrown away, even if its own expiry is later */
+const closeOf=b=>startOfDay(readyAt(b))+CLOSE_H*H;
+const deadlineOf=b=>Math.min(b.expireAt,closeOf(b));
+const endsAtClose=b=>closeOf(b)<b.expireAt;
+const untilTxt=(exp,now)=>{const c=startOfDay(now)+CLOSE_H*H;return exp>c?`${CLOSE_H}:00 收店`:hm(exp)};
+function phase(b,now){if(isPearl(b.item)&&now<readyAt(b))return"cook";const l=deadlineOf(b)-now;return l<=0?"dead":l<30*M?"warn":"ok"}
 function timer(b,now){
   if(phase(b,now)==="cook")return{to:readyAt(b),from:b.startAt,cap:`${hm(readyAt(b))} 起鍋`};
-  return{to:b.expireAt,from:readyAt(b),cap:b.expireAt<=now?"已過期，請報廢":`到 ${hm(b.expireAt)}`};
+  const dl=deadlineOf(b),shut=endsAtClose(b);
+  return{to:dl,from:readyAt(b),cap:dl<=now?(shut?"收店了，請報廢":"已過期，請報廢"):shut?`到 ${CLOSE_H}:00 收店`:`到 ${hm(b.expireAt)}`};
 }
 /* tea location: every tea batch is split into parts on the counter (檯面上), in the standby area (備茶區) or in the fridge (冰箱).
    Expiry stays 4h from cooking wherever a part sits. */
@@ -676,18 +682,18 @@ function renderItemSheet(k){
     const s=suggest(k), cooking=pearlMode==="cook";
     add=`<p class="lbl">新增一鍋</p>
       <div class="modes"><button class="mode" data-mode="cook" aria-pressed="${cooking}">現在下鍋<small>${hm(now+PEARL_COOK)} 起鍋</small></button>
-      <button class="mode" data-mode="done" aria-pressed="${!cooking}">已經煮好了<small>效期到 ${hm(now+PEARL_LIFE)}</small></button></div>
+      <button class="mode" data-mode="done" aria-pressed="${!cooking}">已經煮好了<small>效期到 ${untilTxt(now+PEARL_LIFE,now)}</small></button></div>
       ${s?`<p class="note">建議 ${s.rec?fmt(s.rec)+"g（外框）":"這時段可以不煮"}・依過去${s.group} ${s.days} 天同時段平均用 ${fmt(Math.round(s.avg))}g${s.skipped?`，已排除大單 ${s.skipped} 天`:""}</p>`:""}
       <div class="big3">${PEARL_SIZES.map(z=>`<button class="size ${s&&s.rec===z?"sug2":""}" data-add="${z}">${fmt(z)}<small class="unit">g</small><small>約 ${cupsOf(z)} 杯</small></button>`).join("")}</div>`;
   }else{
     if(i.pot){
-      add=`<p class="lbl">鍋煮好了・效期到 ${hm(now+TEA_LIFE)}・${itemHasCounter(k)?"檯面還有，全部放冰箱":"1 桶放檯面，其他放冰箱"}</p>
+      add=`<p class="lbl">鍋煮好了・效期到 ${untilTxt(now+TEA_LIFE,now)}・${itemHasCounter(k)?"檯面還有，全部放冰箱":"1 桶放檯面，其他放冰箱"}</p>
       <div class="big3">${TEA_MULTS.map(n=>`<button class="size" data-add="${n}">${n}<small class="unit">倍</small><small>${bucketsFor(k,n)}桶${n===3?"・大單":""}</small></button>`).join("")}</div>
       ${i.rec?`<div class="recipe"><b>配方（95°C・${i.rec.steep}）</b>${TEA_MULTS.map(n=>`<span>${n}倍：${i.rec.leafName||"茶葉"} ${i.rec.leaf[n-1]}g・水 ${i.rec.water[n-1]}ml・${i.rec.cream?`奶精 ${i.rec.cream[n-1]}g・`:""}冰塊 ${i.rec.ice[n-1]}g</span>`).join("")}</div>`:""}`;
     }else{
       const hcnt=itemHasCounter(k);
       const where=isTakeout(k)?(hcnt?`${per(k)} 桶都放冰箱`:`檯面 1 桶・冰箱 ${fmt(per(k)-1)} 桶`):`放${hcnt?LOC.standby:LOC.counter}`;
-      add=`<button class="btn pri wide" data-add="1" data-cnt="1">煮好了，開始計時<small>${where}・效期到 ${hm(now+TEA_LIFE)}</small></button>`;
+      add=`<button class="btn pri wide" data-add="1" data-cnt="1">煮好了，開始計時<small>${where}・效期到 ${untilTxt(now+TEA_LIFE,now)}</small></button>`;
     }
   }
   const stop=isStopped(k,now)?`<button class="btn wide" data-unstop="${k}">今天不煮了・按這裡恢復<small>${p?"下鍋提醒會再出現":"卡片會恢復成可以登記"}</small></button>`
@@ -875,8 +881,8 @@ document.addEventListener("pointerdown",()=>{try{if(!ac)ac=new(window.AudioConte
 let snooze={}; /* id -> time until which it stays quiet */
 function expiredList(now){
   const out=[];
-  batches.forEach(b=>{if(b.status==="active"&&b.expireAt<=now&&!b.sample){const i=byKey[b.item];
-    out.push({id:b.id,kind:"tea",name:b.item,color:i.b,sub:`${isTea(b.item)?partsText(b):amt(b.item,b.size)}・${hm(b.expireAt)} 到期`,since:b.expireAt})}});
+  batches.forEach(b=>{if(b.status==="active"&&deadlineOf(b)<=now&&!b.sample){const i=byKey[b.item],shut=endsAtClose(b);
+    out.push({id:b.id,kind:"tea",name:b.item,color:i.b,sub:`${isTea(b.item)?partsText(b):amt(b.item,b.size)}・${shut?`${CLOSE_H}:00 收店報廢`:hm(b.expireAt)+" 到期"}`,since:deadlineOf(b)})}});
   tops.forEach(t=>{if(t.status==="active"&&now>=topDueAt(t))
     out.push({id:t.id,kind:"top",name:t.name,color:"var(--top)",sub:`效期梯次 ${batchLabel(t)} 需報廢・${t.boxes||1} 盒`,since:topDueAt(t),top:true})});
   return out.sort((a,b)=>a.since-b.since);
@@ -938,7 +944,7 @@ function addTea(k,z,cnt,now){
   if(isPlain(k)){size=1;parts=[{loc:hc?"standby":"counter",amt:1}]}
   else{size=isSingle(k)?1:z;const B=bucketsFor(k,size),first=Math.min(1,B);parts=hc?[{loc:"fridge",amt:B}]:[{loc:"counter",amt:first}];if(!hc&&B>first)parts.push({loc:"fridge",amt:B-first})}
   addBatch({item:k,size,buckets:bucketsFor(k,size),carried,parts,big:!!byKey[k].pot&&z===3,startAt:now,readyAt:now,expireAt:now+TEA_LIFE});
-  toast(`${k} ${amt(k,size)} 效期到 ${hm(now+TEA_LIFE)}`);
+  toast(`${k} ${amt(k,size)} 效期到 ${untilTxt(now+TEA_LIFE,now)}`);
 }
 /* ===== safety: deleted records go to a 14-day trash, and big deletions need the manager PIN ===== */
 const TRASH_DAYS=14, FREE_UNDO_MIN=10;
@@ -978,10 +984,10 @@ document.addEventListener("click",e=>{
   if(d.unstop){const k=dayKey(Date.now());stopped[k]=(stopped[k]||[]).filter(n=>n!==d.unstop);toast(`${d.unstop} 恢復`);return render()}
   if(d.add&&sheet){const k=sheet,now=Date.now(),z=+d.add;closeSheet();
     if(isPearl(k)&&pearlMode==="cook"){const r=now+PEARL_COOK;addBatch({item:k,size:z,startAt:now,readyAt:r,expireAt:r+PEARL_LIFE});toast(`${k} ${fmt(z)}g 下鍋，${hm(r)} 起鍋`)}
-    else if(isPearl(k)){addBatch({item:k,size:z,startAt:now,readyAt:now,expireAt:now+PEARL_LIFE});toast(`${k} ${fmt(z)}g 效期到 ${hm(now+PEARL_LIFE)}`)}
+    else if(isPearl(k)){addBatch({item:k,size:z,startAt:now,readyAt:now,expireAt:now+PEARL_LIFE});toast(`${k} ${fmt(z)}g 效期到 ${untilTxt(now+PEARL_LIFE,now)}`)}
     else{addTea(k,z,+d.cnt||1,now)}
     return render()}
-  if(d.ready){const now=Date.now();patch(batches,d.ready,{readyAt:now,expireAt:now+PEARL_LIFE});toast(`已起鍋，效期到 ${hm(now+PEARL_LIFE)}`);return render()}
+  if(d.ready){const now=Date.now();patch(batches,d.ready,{readyAt:now,expireAt:now+PEARL_LIFE});toast(`已起鍋，效期到 ${untilTxt(now+PEARL_LIFE,now)}`);return render()}
   if(d.done){openWaste=confirmDel=null;patch(batches,d.done,{status:"done",waste:0,wasteBucket:0,endAt:Date.now()});toast("已標記用完");return render()}
   if(d.staff){selStaff=selStaff.includes(d.staff)?selStaff.filter(n=>n!==d.staff):[...selStaff,d.staff];save();return renderSheet()}
   if("staffedit" in d){staffEdit=!staffEdit;renderSheet();if(staffEdit)setTimeout(()=>$("staffname")?.focus(),30);return}
