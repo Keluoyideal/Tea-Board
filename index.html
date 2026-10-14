@@ -316,9 +316,9 @@ const ITEMS=[
   {k:"香鳶尾青茶",b:"#ece6d6",fg:"#3a3527",per:1.5,limited:true,takeout:true,brew:11},
   {k:"國寶茶",b:"#7a7f78",pot:true,brew:10,rec:{leaf:[70,140,210],water:[2500,5000,7500],ice:[2100,4200,6300],steep:"燜 10 分"}},
   {k:"菊花茶",b:"#7a7f78",pot:true,brew:17,rec:{leaf:[30,60,90],water:[2800,5600,8400],ice:[1800,3600,5400],steep:"加蓋煮 3 分（電磁爐最大火力）・燜 14 分"}},
-  {k:"蕎麥茶",b:"#7a7f78",pot:true,brew:20,rec:{leaf:[120,280,440],water:[2700,6300,9900],ice:[1800,4200,6600],steep:"燜 20 分"}},
-  {k:"玄米茶",b:"#7a7f78",pot:true,brew:20,rec:{leaf:[120,280,440],water:[2700,6300,9900],ice:[1800,4200,6600],steep:"燜 20 分"}},
-  {k:"奶茶",b:"#7a7f78",pot:true,brew:14,rec:{leaf:[120,280,400],water:[2700,6300,9000],ice:[1800,4200,6000],cream:[360,840,1200],leafName:"天鑼紅茶",steep:"燜 14 分"}},
+  {k:"蕎麥茶",b:"#7a7f78",pot:true,brew:20,rec:{buckets:[1,2,3],leaf:[120,280,440],water:[2700,6300,9900],ice:[1800,4200,6600],steep:"燜 20 分"}},
+  {k:"玄米茶",b:"#7a7f78",pot:true,brew:20,rec:{buckets:[1,2,3],leaf:[120,280,440],water:[2700,6300,9900],ice:[1800,4200,6600],steep:"燜 20 分"}},
+  {k:"奶茶",b:"#7a7f78",pot:true,brew:14,rec:{buckets:[1,2,3],leaf:[120,280,400],water:[2700,6300,9000],ice:[1800,4200,6000],cream:[360,840,1200],leafName:"天鑼紅茶",steep:"燜 14 分"}},
   {k:"琥珀珍珠",b:"#8a5424",pearl:true},{k:"蕎麥珍珠",b:"#6e5a45",pearl:true}
 ];
 /* toppings: boxes per 份, and how many boxes to keep in the fridge on busy / quiet days */
@@ -338,7 +338,7 @@ const isPearl=k=>!!byKey[k]?.pearl;
 const per=k=>byKey[k]?.per||1;
 const LILY_ML=5000; /* one 百合桶 ≈ 5 L */
 const potLiters=(k,n)=>{const r=byKey[k]?.rec;if(!r)return null;const i=n-1;return (r.water[i]+r.ice[i]+(r.cream?.[i]||0))/1000};
-const bucketsFor=(k,n)=>{const L=potLiters(k,n);return L!=null?Math.round(L*1000/LILY_ML*10)/10:byKey[k]?.mults?.[n]??n*per(k)};
+const bucketsFor=(k,n)=>{const fixed=byKey[k]?.rec?.buckets;if(fixed)return fixed[n-1];const L=potLiters(k,n);return L!=null?Math.round(L*1000/LILY_ML*10)/10:byKey[k]?.mults?.[n]??n*per(k)};
 const bk=b=>b.buckets??bucketsFor(b.item,b.size);
 const fmt=n=>(Math.round(n*100)/100).toLocaleString("zh-TW");
 const amt=(k,n)=>isPearl(k)?`${fmt(n)}g・約${cupsOf(n)}杯`:byKey[k]?.pot?`${n}倍・${bucketsFor(k,n)}桶`:`${bucketsFor(k,n)}桶`;
