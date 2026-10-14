@@ -453,7 +453,7 @@ function load(){loadDevice();if(FIREBASE_CONFIG&&window.firebase){
 
 /* ===== time helpers ===== */
 /* early staff start cooking at 8:00; shop is open 10:00–21:00 */
-const PREP_H=8, OPEN_H=10, CLOSE_H=21, LAST_PEARL_H=17;
+const PREP_H=8, OPEN_H=10, CLOSE_H=21, LAST_PEARL_H=17, NIGHT_END_H=4;
 /* tea lasts 4h, so the last brew of the day is 17:00 (good until closing at 21:00) */
 const LAST_TEA_H=CLOSE_H-TEA_LIFE/H;
 let stopped={}; /* dayKey -> [品項] staff marked as finished for the day */
@@ -461,8 +461,8 @@ const isStopped=(k,now)=>(stopped[dayKey(now)]||[]).includes(k);
 const pastLastTea=now=>{const h=(now-startOfDay(now))/H;return h>=LAST_TEA_H&&h<CLOSE_H};
 function shopState(now){const h=(now-startOfDay(now))/H;
   if(h>=OPEN_H&&h<CLOSE_H)return{s:"open",t:"營業中"};
-  if(h>=PREP_H&&h<OPEN_H)return{s:"prep",t:"準備中"};
-  return{s:"closed",t:"已打烊"};}
+  if(h>=CLOSE_H||h<NIGHT_END_H)return{s:"closed",t:"打烊"};
+  return{s:"prep",t:"準備中"};}
 const pad=n=>String(n).padStart(2,"0");
 const dayKey=t=>{const d=new Date(t);return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())};
 const hm=t=>{const d=new Date(t);return pad(d.getHours())+":"+pad(d.getMinutes())};
@@ -486,10 +486,12 @@ const WD_ORDER=[1,2,3,4,5,6,0];
 function fmtLeft(ms){const neg=ms<0;ms=Math.abs(ms);return (neg?"-":"")+Math.floor(ms/H)+":"+pad(Math.floor(ms%H/M))+":"+pad(Math.floor(ms%M/1e3))}
 const readyAt=b=>b.readyAt||b.startAt;
 /* everything still out at closing (21:00) is thrown away, even if its own expiry is later */
-const closeOf=b=>startOfDay(readyAt(b))+CLOSE_H*H;
+/* the closing time that comes next after t (something made after 21:00 counts toward the next day's closing) */
+const nextClose=t=>{const c=startOfDay(t)+CLOSE_H*H;return t>=c?c+D:c};
+const closeOf=b=>nextClose(readyAt(b));
 const deadlineOf=b=>Math.min(b.expireAt,closeOf(b));
 const endsAtClose=b=>closeOf(b)<b.expireAt;
-const untilTxt=(exp,now)=>{const c=startOfDay(now)+CLOSE_H*H;return exp>c?`${CLOSE_H}:00 收店`:hm(exp)};
+const untilTxt=(exp,now)=>exp>nextClose(now)?`${CLOSE_H}:00 收店`:hm(exp);
 function phase(b,now){if(isPearl(b.item)&&now<readyAt(b))return"cook";const l=deadlineOf(b)-now;return l<=0?"dead":l<30*M?"warn":"ok"}
 function timer(b,now){
   if(phase(b,now)==="cook")return{to:readyAt(b),from:b.startAt,cap:`${hm(readyAt(b))} 起鍋`};
