@@ -193,6 +193,7 @@ main{flex:1;min-height:0;display:grid}
 .confirm{display:flex;flex-direction:column;gap:8px;border:2px solid var(--bad);background:var(--bad-bg);border-radius:10px;padding:10px 12px;width:100%}
 .confirm b{color:var(--bad)}
 .staff .tab[aria-pressed="true"]{background:var(--top);border-color:var(--top);color:var(--surface)}
+.tops .left .plus{display:block;font-size:.62em;color:var(--top);margin-top:2px}
 .recipe{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted);border:1px dashed var(--line);border-radius:8px;padding:6px 10px}
 .recipe b{color:var(--ink);font-size:12px}
 .merge{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--bg);font-size:13px;color:var(--muted)}
@@ -626,7 +627,7 @@ function topCard(n,now){
   const ph=!L.length?"none":L.some(t=>topPhase(t,now)==="dead")?"dead":s.exp?"warn":"ok";
   return `<button class="card" data-topen="${n}" data-phase="${ph}" style="--bucket:var(--top)">
     <div class="band"><b>${n}</b><small>1份=${s.T.box}盒</small></div>
-    <div class="cbody"><div class="left">${s.have?`冰箱 ${fmtBox(s.have)} 盒`:"冰箱沒有"}</div>
+    <div class="cbody"><div class="left">${s.count?`冰箱 ${fmtBox(s.count)} 盒`:"冰箱沒有"}${s.made?`<span class="plus">＋今天做 ${fmtBox(s.made)} 盒</span>`:""}</div>
       <div class="cap">${s.exp?`今晚報廢 ${s.exp} 盒・`:""}明天最多 ${fmtBox(s.target)} 盒${s.counted?"":"・未點數"}</div>
       <div class="sug" style="color:var(--top)">${s.portions?`建議做 ${s.portions} 份（${s.portions*s.T.box} 盒）`:"夠了，不用做"}</div></div>${tallyHTML(tt.c,tt.w,"盒")}</button>`;
 }
@@ -721,7 +722,7 @@ function renderTopSheet(n){
   box.innerHTML=`<div class="sheet-head"><span class="swatch"></span><h3>${n}</h3><span class="grp-chip">1 份 = ${T.box} 盒</span><button class="btn" data-close>關閉</button></div>
     <p class="lbl">① 做之前冰箱剩幾盒？${s.counted?"":"（還沒點數，先帶入系統裡的盒數）"}</p>
     <div class="stepper"><button class="btn" data-fr="-0.5" aria-label="少半盒">−</button><input id="frin" class="num" type="number" inputmode="decimal" step="0.1" min="0" value="${fmtBox(s.count)}" aria-label="冰箱剩幾盒"><span>盒</span><button class="btn" data-fr="0.5" aria-label="多半盒">＋</button>${s.counted?"":`<button class="btn" data-fr="0">數量正確</button>`}</div>
-    <p class="note">${s.made?`今天已經做了 ${fmtBox(s.made)} 盒，冰箱共 ${fmtBox(s.have)} 盒。`:""}${s.exp?`其中 <b style="color:var(--bad)">${s.exp} 盒今晚 8 點要報廢</b>，`:""}能用的是 ${fmtBox(s.usable)} 盒。</p>
+    <p class="note">${s.made?`冰箱 ${fmtBox(s.count)} 盒＋今天做 ${fmtBox(s.made)} 盒，共 ${fmtBox(s.have)} 盒。`:""}${s.exp?`其中 <b style="color:var(--bad)">${s.exp} 盒今晚 8 點要報廢</b>，`:""}能用的是 ${fmtBox(s.usable)} 盒。</p>
     <p class="lbl">② 明天（週${WK[new Date(s.tom).getDay()]}）要備多少</p>
     <p class="note">${s.src}。</p>
     <div class="stepper sm"><span>大單加量</span><button class="btn" data-fx="-1" aria-label="少一盒">−</button><b class="num">${s.extra}</b><span>盒</span><button class="btn" data-fx="1" aria-label="多一盒">＋</button></div>
