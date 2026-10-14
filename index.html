@@ -609,7 +609,9 @@ function usageOn(n,ds){const prev=logOf(ds-D,n),cur=logOf(ds,n);if(!prev||!cur)r
 const topBig=(ds,n)=>!!topExtra[dayKey(ds-D)]?.[n]||bigDays.has(bigKey(ds,n));
 function topSuggest(n,now){
   const T=topBy[n],today=startOfDay(now),tom=today+D,busy=isBusy(tom),lg=logOf(today,n);
-  const have=lg?lg.count:boxesOnHand(n),exp=expBoxes(n,now),usable=Math.max(0,have-exp);
+  /* count = boxes found in the fridge before making; boxes made today after that count are added on top */
+  const count=lg?lg.count:boxesOnHand(n),made=lg?madeOn(n,today):0,have=count+made;
+  const exp=lg?lg.exp:expBoxes(n,now),usable=Math.max(0,have-exp);
   const lw=tom-7*D,u=topBig(lw,n)?null:usageOn(n,lw);
   let base,src;
   if(u!=null){base=u;src=`上週${WK[new Date(lw).getDay()]}（${md(lw)}）用了 ${fmtBox(u)} 盒`}
@@ -617,7 +619,7 @@ function topSuggest(n,now){
   const extra=topExtra[dayKey(today)]?.[n]||0,target=base+extra,need=Math.max(0,target-usable);
   /* the target is a ceiling: round down so the fridge never goes over it (婚貴 2.5 盒 → 1 份 = 4.5 盒, not 2 份 = 6.5 盒) */
   const want=Math.floor(need/T.box+1e-9);
-  return{T,have,exp,usable,base,src,extra,target,need,want,portions:Math.min(want,T.max),counted:!!lg,tom};
+  return{T,count,made,have,exp,usable,base,src,extra,target,need,want,portions:Math.min(want,T.max),counted:!!lg,tom};
 }
 function topCard(n,now){
   const L=liveTop(n),tt=todayTotals(tops,x=>x.name===n),s=topSuggest(n,now);
@@ -717,9 +719,9 @@ function renderTopSheet(n){
   const qs=Array.from({length:T.max},(_,i)=>i+1);
   const box=$("sheet-box");box.style.setProperty("--bucket","var(--top)");
   box.innerHTML=`<div class="sheet-head"><span class="swatch"></span><h3>${n}</h3><span class="grp-chip">1 份 = ${T.box} 盒</span><button class="btn" data-close>關閉</button></div>
-    <p class="lbl">① 冰箱現在剩幾盒？${s.counted?"":"（還沒點數，先帶入系統裡的盒數）"}</p>
-    <div class="stepper"><button class="btn" data-fr="-0.5" aria-label="少半盒">−</button><input id="frin" class="num" type="number" inputmode="decimal" step="0.1" min="0" value="${fmtBox(s.have)}" aria-label="冰箱剩幾盒"><span>盒</span><button class="btn" data-fr="0.5" aria-label="多半盒">＋</button>${s.counted?"":`<button class="btn" data-fr="0">數量正確</button>`}</div>
-    <p class="note">${s.exp?`其中 <b style="color:var(--bad)">${s.exp} 盒今晚 8 點要報廢</b>，能用的是 ${fmtBox(s.usable)} 盒。`:`能用的是 ${fmtBox(s.usable)} 盒。`}</p>
+    <p class="lbl">① 做之前冰箱剩幾盒？${s.counted?"":"（還沒點數，先帶入系統裡的盒數）"}</p>
+    <div class="stepper"><button class="btn" data-fr="-0.5" aria-label="少半盒">−</button><input id="frin" class="num" type="number" inputmode="decimal" step="0.1" min="0" value="${fmtBox(s.count)}" aria-label="冰箱剩幾盒"><span>盒</span><button class="btn" data-fr="0.5" aria-label="多半盒">＋</button>${s.counted?"":`<button class="btn" data-fr="0">數量正確</button>`}</div>
+    <p class="note">${s.made?`今天已經做了 ${fmtBox(s.made)} 盒，冰箱共 ${fmtBox(s.have)} 盒。`:""}${s.exp?`其中 <b style="color:var(--bad)">${s.exp} 盒今晚 8 點要報廢</b>，`:""}能用的是 ${fmtBox(s.usable)} 盒。</p>
     <p class="lbl">② 明天（週${WK[new Date(s.tom).getDay()]}）要備多少</p>
     <p class="note">${s.src}。</p>
     <div class="stepper sm"><span>大單加量</span><button class="btn" data-fx="-1" aria-label="少一盒">−</button><b class="num">${s.extra}</b><span>盒</span><button class="btn" data-fx="1" aria-label="多一盒">＋</button></div>
@@ -1031,7 +1033,7 @@ document.addEventListener("click",e=>{
   /* toppings */
   if("busy" in d){const t=Date.now()+D,k=dayKey(t);busyOverride[k]=!isBusy(t);return render()}
   if(d.fr!==undefined&&sheet?.startsWith("top:")){const n=sheet.slice(4),now=Date.now(),k=dayKey(now),s0=topSuggest(n,now);
-    setFridge(n,s0.have+(+d.fr));return render()}
+    setFridge(n,s0.count+(+d.fr));return render()}
   if(d.fx!==undefined&&sheet?.startsWith("top:")){const n=sheet.slice(4),k=dayKey(Date.now());const v=Math.max(0,(topExtra[k]?.[n]||0)+(+d.fx));
     (topExtra[k]??={})[n]=v;if(!v)delete topExtra[k][n];return render()}
   if(d.tadd)return addTop(d.tadd,+d.q||1);
