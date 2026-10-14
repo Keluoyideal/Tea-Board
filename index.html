@@ -1,0 +1,960 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ecefe6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>window.FIREBASE_CONFIG={apiKey:"AIzaSyBTfrP7-X14xxRzZEWOEDin7PwzrBIv8xU",authDomain:"tea-board-c32f9.firebaseapp.com",projectId:"tea-board-c32f9",storageBucket:"tea-board-c32f9.firebasestorage.app",messagingSenderId:"331379198907",appId:"1:331379198907:web:f767d37b8c412c56b5529e"};</script>
+<title>後場茶湯效期板</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Noto+Serif+TC:wght@900&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: one screen, no scrolling — top bar (title, page tabs, clock), pearl reminder, then the active page: tea+pearl board or toppings board. Each card is both the button and the live timer, with today's running total. A thin tally strip with the Records button sits at the bottom; sheets open over the board. */
+:root{
+  --bg:#ecefe6; --surface:#fafbf6; --sunk:#e2e6da; --ink:#1d271f; --muted:#5f6a5c; --line:#cfd6c4;
+  --accent:#2c5a43; --accent-ink:#f4f8f1; --pearl:#6b3f1d; --pearl-bg:#f1e7dc; --top:#7a4f8a;
+  --ok:#3b7a4b; --warn:#b8720b; --warn-bg:#fbefd8; --bad:#b0281f; --bad-bg:#f8e1dd; --cook:#3d5f8f; --cook-bg:#e3eaf4;
+  --band-edge:transparent;
+  --f-display:"Noto Serif TC","Songti TC",serif; --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141a16; --surface:#1c241f; --sunk:#111613; --ink:#e4ebdf; --muted:#9aa695; --line:#2f3a32;
+  --accent:#7cbf98; --accent-ink:#0f1a13; --pearl:#d9a77c; --pearl-bg:#2a211a; --top:#c9a0d8;
+  --ok:#79c08a; --warn:#e8a843; --warn-bg:#3a2c12; --bad:#ff7a6e; --bad-bg:#3d1a17; --cook:#8fb3e6; --cook-bg:#1a2433;
+  --band-edge:#5b665d; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141a16; --surface:#1c241f; --sunk:#111613; --ink:#e4ebdf; --muted:#9aa695; --line:#2f3a32;
+  --accent:#7cbf98; --accent-ink:#0f1a13; --pearl:#d9a77c; --pearl-bg:#2a211a; --top:#c9a0d8;
+  --ok:#79c08a; --warn:#e8a843; --warn-bg:#3a2c12; --bad:#ff7a6e; --bad-bg:#3d1a17; --cook:#8fb3e6; --cook-bg:#1a2433;
+  --band-edge:#5b665d; color-scheme:dark}
+*{box-sizing:border-box}
+html{height:100%}
+html,body{background:var(--bg);color:var(--ink)}
+body{height:100%;font-family:var(--f-body);font-size:15px;line-height:1.4;padding-inline:12px;padding-block:10px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+/* top bar */
+.top{display:flex;align-items:center;gap:8px;flex:none;flex-wrap:nowrap;min-width:0}
+.top h1{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+h1{font-family:var(--f-display);font-weight:900;font-size:clamp(14px,4.4vw,18px);margin:0;letter-spacing:.04em;white-space:nowrap}
+.pages{display:flex;background:var(--sunk);border-radius:999px;padding:3px}
+.page-tab{white-space:nowrap;border:none;background:transparent;border-radius:999px;padding:5px 12px;font-weight:700;font-size:14px;min-height:34px;color:var(--muted)}
+.page-tab[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px color-mix(in srgb,var(--ink) 20%,transparent)}
+.clockbox{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.clock{font-family:var(--f-mono);font-weight:700;font-size:20px;line-height:1}
+.shop{font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;white-space:nowrap;background:var(--sunk);color:var(--muted)}
+.shop[data-s="open"]{background:var(--ok);color:var(--surface)}
+.shop[data-s="prep"]{background:var(--warn);color:var(--surface)}
+.alerts{display:flex;flex-direction:column;gap:6px;flex:none}
+.alert{display:flex;align-items:center;gap:8px;border-radius:10px;padding:6px 6px 6px 10px;border:2px solid var(--warn);background:var(--warn-bg);font-size:13px}
+.alert.urgent{border-color:var(--bad);background:var(--bad-bg);animation:pulse 1.6s ease-in-out infinite}
+.alert p{margin:0;flex:1;min-width:0}
+.alert b{font-weight:900}
+.alert .btn{min-height:36px;padding:4px 10px;font-size:13px}
+
+/* boards */
+main{flex:1;min-height:0;display:grid}
+.board{min-height:0;display:grid;grid-template-rows:minmax(0,30fr) minmax(0,70fr);gap:8px}
+@media (min-width:900px) and (min-aspect-ratio:4/3){.board{grid-template-rows:none;grid-template-columns:minmax(0,1fr) minmax(0,2fr)}}
+.pearls{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-height:0}
+@media (min-width:900px) and (min-aspect-ratio:4/3){.pearls{grid-template-columns:none;grid-template-rows:1fr 1fr}}
+.teas,.tops{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:minmax(0,1fr);gap:8px;min-height:0}
+@media (min-width:560px){.teas,.tops{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.tops{grid-template-columns:repeat(2,minmax(0,1fr))!important;grid-template-rows:repeat(2,minmax(0,1fr))}
+
+.tops .cbody{gap:4px}
+.tops .sug{font-size:14px}
+.stepper{display:flex;align-items:center;gap:14px}
+.stepper b{font-size:34px;min-width:2ch;text-align:center}
+.stepper .btn{min-width:60px;font-size:26px;line-height:1}
+.stepper .btn[data-fr="0"]{font-size:15px;min-width:0}
+.stepper input{width:4.2ch;font-size:32px;font-weight:700;text-align:center;padding:4px 2px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+.stepper.sm b{font-size:24px}
+.stepper.sm .btn{min-width:48px;font-size:20px}
+.stepper.sm span:first-child{font-weight:700}
+
+.card{position:relative;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:0;text-align:left;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+.card:active{transform:scale(.98)}
+.band{background:var(--bucket);color:var(--bandfg,#fff);padding:3px 8px;display:flex;align-items:baseline;gap:6px;box-shadow:inset 0 -1px 0 var(--band-edge);flex:none;min-width:0}
+.band b{font-weight:900;font-size:15px;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.band small{margin-left:auto;font-size:11px;opacity:.9;white-space:nowrap}
+.cbody{flex:1;min-height:0;overflow:hidden;padding:3px 8px 2px;display:flex;flex-direction:column;justify-content:center;gap:1px}
+.left{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:700;font-size:clamp(16px,4.4vw,26px);line-height:1.05}
+.cap{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tally{flex:none;font-size:11px;color:var(--muted);padding:0 8px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tally b{color:var(--ink);font-family:var(--f-mono)}
+.tally b.bad{color:var(--bad)}
+.bar{height:4px;background:var(--sunk);border-radius:2px;overflow:hidden;flex:none;margin:0 8px 4px}
+.bar i{display:block;height:100%;background:var(--ok)}
+.idle{color:var(--muted);font-size:13px}
+.alertline{font-size:12px;font-weight:700;color:var(--warn);line-height:1.3}
+.alertline.urgent{color:var(--bad)}
+.more{position:absolute;right:6px;top:28px;font-size:11px;font-weight:700;background:var(--ink);color:var(--bg);border-radius:999px;padding:0 6px}
+.card[data-phase="cook"]{background:var(--cook-bg);border-color:var(--cook)} .card[data-phase="cook"] .left{color:var(--cook)} .card[data-phase="cook"] .bar i{background:var(--cook)}
+.card[data-phase="warn"]{background:var(--warn-bg);border-color:var(--warn)} .card[data-phase="warn"] .left{color:var(--warn)} .card[data-phase="warn"] .bar i{background:var(--warn)}
+.card[data-phase="dead"]{background:var(--bad-bg);border-color:var(--bad);animation:pulse 1.6s ease-in-out infinite} .card[data-phase="dead"] .left{color:var(--bad)}
+@keyframes pulse{50%{box-shadow:0 0 0 3px color-mix(in srgb,var(--bad) 40%,transparent)}}
+.card.pearl .cbody{flex-direction:row;align-items:center;justify-content:space-between;gap:6px}
+.card.pearl .cbody>div{min-width:0}
+.card.pearl .left{font-size:clamp(18px,5vw,30px)}
+.sug{font-size:11px;color:var(--pearl);font-weight:700}
+.card.stopped{opacity:.55}
+.card.stopped .idle{font-weight:700}
+.card.addtop{border-style:dashed;align-items:center;justify-content:center;color:var(--muted);font-weight:700;background:transparent}
+.tops .card .left{font-family:var(--f-body);font-size:clamp(20px,5vw,30px);font-weight:900}
+
+/* pot animation */
+.potsvg{height:100%;max-height:88px;width:auto;aspect-ratio:120/96;max-width:46%;flex:none;overflow:visible}
+.potsvg .body{fill:var(--sunk);stroke:var(--ink);stroke-width:2.5}
+.potsvg .rim{fill:var(--surface);stroke:var(--ink);stroke-width:2.5}
+.potsvg .water{fill:color-mix(in srgb,var(--liq) 45%,var(--cook-bg))}
+.potsvg .pearlball{fill:var(--liq);stroke:color-mix(in srgb,var(--ink) 40%,transparent);stroke-width:.8}
+.potsvg .hi{fill:#fff;opacity:.45}
+.potsvg .bub{fill:none;stroke:var(--surface);stroke-width:1.4}
+.potsvg .steam{fill:none;stroke:var(--muted);stroke-width:2.5;stroke-linecap:round;opacity:0}
+.potsvg .flame{fill:#e8762b} .potsvg .flame.in{fill:#f6c548}
+.bob{animation:bob 1.1s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:center}
+.bob.b2{animation-duration:.9s;animation-delay:-.3s}.bob.b3{animation-duration:1.3s;animation-delay:-.6s}.bob.b4{animation-duration:1s;animation-delay:-.2s}.bob.b5{animation-duration:1.2s;animation-delay:-.8s}
+@keyframes bob{from{transform:translate(0,2px) rotate(-8deg)}to{transform:translate(2px,-4px) rotate(10deg)}}
+.bub{animation:rise 1.6s ease-in infinite;transform-box:fill-box}
+.bub.u2{animation-delay:-.5s}.bub.u3{animation-delay:-1.1s}
+@keyframes rise{0%{transform:translateY(6px) scale(.4);opacity:0}30%{opacity:1}100%{transform:translateY(-10px) scale(1.2);opacity:0}}
+.steam{animation:steam 2.6s ease-out infinite}
+.steam.s2{animation-delay:-.9s}.steam.s3{animation-delay:-1.7s}
+@keyframes steam{0%{transform:translateY(8px);opacity:0}25%{opacity:.7}100%{transform:translateY(-14px);opacity:0}}
+.flame{animation:flick .35s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:50% 100%}
+.flame.f2{animation-delay:-.15s}.flame.f3{animation-delay:-.25s}
+@keyframes flick{from{transform:scaleY(.8)}to{transform:scaleY(1.15)}}
+@media (prefers-reduced-motion:reduce){.bob,.bub,.steam,.flame,.card[data-phase="dead"],.alert.urgent{animation:none}.steam{opacity:.5}}
+
+/* bottom strip */
+.strip{flex:none;display:flex;align-items:center;gap:4px 10px;flex-wrap:nowrap;overflow:hidden;white-space:nowrap;border-top:1px solid var(--line);padding-top:6px;font-size:13px;color:var(--muted)}
+.strip b{color:var(--ink);font-family:var(--f-mono)}
+.strip b.bad{color:var(--bad)}
+.strip .btn{margin-left:auto;min-height:40px;flex:none}
+.strip>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.strip .tab{flex:none}
+
+/* buttons */
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 12px;font-weight:700;min-height:44px}
+.btn.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.bad{background:var(--bad);color:#fff;border-color:var(--bad)}
+.btn.ghost{background:transparent;color:var(--muted);font-weight:500}
+.btn.wide{min-height:64px;font-size:20px;width:100%}
+.btn.wide small{display:block;font-weight:500;font-size:13px}
+
+/* sheets */
+.sheet-bg{position:fixed;inset:0;background:color-mix(in srgb,var(--ink) 45%,transparent);display:flex;align-items:flex-end;justify-content:center;z-index:10;padding:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+.sheet{background:var(--surface);border-radius:14px;padding:16px;width:min(680px,100%);max-height:90%;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.sheet-head{display:flex;align-items:center;gap:10px}
+.sheet-head h3{margin:0;font-size:22px;font-weight:900}
+.sheet-head .swatch{width:16px;height:22px;border-radius:3px;background:var(--bucket);box-shadow:0 0 0 1px var(--band-edge)}
+.sheet-head .btn{margin-left:auto}
+.lbl{font-size:12px;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:0}
+.rows{display:flex;flex-direction:column;gap:8px}
+.row{border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;background:var(--bg)}
+.row[data-phase="cook"]{background:var(--cook-bg);border-color:var(--cook)}
+.row[data-phase="warn"]{background:var(--warn-bg);border-color:var(--warn)}
+.row[data-phase="dead"]{background:var(--bad-bg);border-color:var(--bad)}
+.row-top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.row-top .left{font-size:22px}
+.parts{display:flex;flex-direction:column;gap:6px}
+.part{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-top:1px dashed var(--line);padding-top:6px}
+.part b{font-size:20px}
+.part .acts{margin-left:auto}
+.loc[data-loc="fridge"]{background:var(--cook);color:var(--surface)}
+.confirm{display:flex;flex-direction:column;gap:8px;border:2px solid var(--bad);background:var(--bad-bg);border-radius:10px;padding:10px 12px;width:100%}
+.confirm b{color:var(--bad)}
+.staff .tab[aria-pressed="true"]{background:var(--top);border-color:var(--top);color:var(--surface)}
+.merge{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--bg);font-size:13px;color:var(--muted)}
+.loc{font-size:13px;font-weight:900;padding:2px 10px;border-radius:999px;background:var(--accent);color:var(--accent-ink);align-self:center}
+.loc[data-loc="standby"]{background:var(--sunk);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+.more{white-space:nowrap}
+.acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.acts span{font-size:13px;color:var(--muted);width:100%}
+.big3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.size{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px 4px;font-family:var(--f-mono);font-weight:700;font-size:22px;min-height:60px}
+.size.custom{display:flex;flex-direction:column;gap:4px;padding:6px;font-family:var(--f-body)}
+.size.custom input{width:100%;min-width:0;font:inherit;font-family:var(--f-mono);font-size:20px;text-align:center;padding:4px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+.size.custom .btn{min-height:32px;padding:2px;font-size:13px}
+.size small.unit{display:inline;font-size:14px;margin-left:2px}
+.size small{display:block;font-family:var(--f-body);font-size:11px;color:var(--muted);font-weight:500}
+.size.sug2{border:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--surface))}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.mode{border:1px solid var(--line);background:transparent;border-radius:10px;padding:8px;font-weight:700;min-height:48px}
+.mode small{display:block;font-weight:400;font-size:12px;color:var(--muted)}
+.mode[aria-pressed="true"]{background:var(--pearl);color:var(--surface);border-color:var(--pearl)}
+.mode[aria-pressed="true"] small{color:inherit;opacity:.85}
+.note{font-size:13px;color:var(--muted);margin:0}
+.field{display:flex;gap:8px}
+.field input{flex:1;min-width:0;font:inherit;font-size:18px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+
+/* records */
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.tab[data-wd]{padding:6px 9px;min-width:0}
+.tab{border:1px solid var(--line);background:transparent;border-radius:999px;padding:6px 14px;font-size:14px;min-height:36px}
+.tab[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.daynav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.daynav strong{font-size:18px;min-width:9em;text-align:center}
+.grp-chip{font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--sunk);color:var(--muted)}
+.bigchk{width:22px;height:22px;accent-color:var(--bad)}
+.big-toggle{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--bg);font-size:14px}
+.big-toggle input{width:22px;height:22px;accent-color:var(--bad)}
+.big-toggle.on{border-color:var(--bad);background:var(--bad-bg)}
+.kpis{display:flex;flex-wrap:wrap;gap:18px}
+.kpi span{display:block;font-size:12px;color:var(--muted)}
+.kpi b{font-family:var(--f-mono);font-size:20px}
+.kpi.bad b{color:var(--bad)}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;min-width:480px}
+table.avg{min-width:0}
+th:first-child,td:first-child{position:sticky;left:0;z-index:1;background:var(--surface);box-shadow:1px 0 0 var(--line)}
+tr.grp td{position:sticky;left:0}
+.btn.xs{min-height:32px;padding:2px 8px;font-size:12px}
+.band b.long{font-size:13px;letter-spacing:0}
+th,td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-size:12px;color:var(--muted);font-weight:700}
+tr.grp td{background:var(--sunk);font-weight:900;font-size:13px}
+td.r-bad{color:var(--bad);font-weight:700}
+td small{color:var(--muted);font-size:11px}
+.dot{display:inline-block;width:10px;height:12px;border-radius:2px;background:var(--bucket);margin-right:8px;vertical-align:middle;box-shadow:0 0 0 1px var(--band-edge)}
+.demo-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-top:1px dashed var(--line);padding-top:10px}
+.status{font-size:12px;color:var(--muted);margin:0}
+.expire-bg{position:fixed;inset:0;z-index:15;background:color-mix(in srgb,var(--bad) 30%,color-mix(in srgb,var(--ink) 55%,transparent));display:flex;align-items:center;justify-content:center;padding:16px}
+.expire{background:var(--surface);border:3px solid var(--bad);border-radius:16px;padding:18px;width:min(560px,100%);max-height:90%;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.expire h2{margin:0;font-size:26px;font-weight:900;color:var(--bad);display:flex;align-items:center;gap:10px}
+.expire h2 .num{font-size:15px;color:var(--muted);font-weight:500;margin-left:auto}
+.xrow{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--bad-bg);flex-wrap:wrap}
+.xrow .sw{width:12px;align-self:stretch;border-radius:3px;background:var(--bucket);box-shadow:0 0 0 1px var(--band-edge)}
+.xrow div{flex:1;min-width:8em}
+.xrow b{font-size:20px;font-weight:900;display:block}
+.xrow small{color:var(--muted);font-size:13px}
+.xacts{display:flex;gap:8px;flex-wrap:wrap}
+.xacts .btn{flex:1}
+.clockrow{display:flex;align-items:center;gap:6px}
+.cloud{width:9px;height:9px;border-radius:50%;background:var(--muted);display:none}
+.cloud[data-s="ok"]{display:block;background:var(--ok)}.cloud[data-s="wait"]{display:block;background:var(--warn)}.cloud[data-s="bad"]{display:block;background:var(--bad)}
+.gate-bg{position:fixed;inset:0;z-index:30;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px}
+.gate{width:min(420px,100%);display:flex;flex-direction:column;gap:12px}
+.gate h2{font-family:var(--f-display);font-size:28px;margin:0}
+.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-weight:700;z-index:20;max-width:calc(100% - 32px)}
+/* landscape (phone or tablet on its side): pearls stacked on the left, teas in 2 rows of 6, toppings in one row of 4 */
+@media (orientation:landscape) and (min-aspect-ratio:4/3){
+  .board{grid-template-rows:none;grid-template-columns:minmax(0,1fr) minmax(0,3fr)}
+  .pearls{grid-template-columns:none;grid-template-rows:1fr 1fr}
+  .teas{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .tops{grid-template-columns:repeat(4,minmax(0,1fr))!important;grid-template-rows:1fr}
+  /* sideways, the first row follows the counter left to right */
+  .teas [data-open="紅茶"]{order:1}
+  .teas [data-open="夏青"]{order:2}
+  .teas [data-open="綠茶"]{order:3}
+  .teas [data-open="春青"]{order:4}
+  .teas [data-open="秋青"]{order:5}
+  .teas [data-open="冬青"]{order:6}
+  .teas [data-open="香鳶尾青茶"]{order:7}
+  .teas [data-open="國寶茶"]{order:8}
+  .teas [data-open="菊花茶"]{order:9}
+  .teas [data-open="蕎麥茶"]{order:10}
+  .teas [data-open="玄米茶"]{order:11}
+  .teas [data-open="奶茶"]{order:12}
+}
+/* short screens (phone on its side): tighter chrome so the board gets the height */
+@media (orientation:landscape) and (max-height:500px){
+  body{gap:5px;padding-block:6px}
+  h1{font-size:15px}
+  .page-tab{min-height:30px;padding:3px 10px;font-size:13px}
+  .clockbox{flex-direction:row;align-items:center;gap:8px}
+  .clock{font-size:17px}
+  .strip{padding-top:4px}
+  .strip .btn{min-height:34px;padding:4px 12px}
+  .band{padding:2px 8px}
+  .band b{font-size:14px}
+  .left,.card.pearl .left{font-size:clamp(14px,2.1vw,19px)}
+  .teas .band small{display:none}
+  .teas .cbody .idle{font-size:12px}
+  .potsvg{max-height:56px;max-width:40%}
+  .alert{padding:3px 4px 3px 8px}
+  .alert .btn{min-height:30px}
+}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <h1>後場效期板</h1>
+  <div class="pages" role="tablist" aria-label="分頁">
+    <button class="page-tab" role="tab" data-page="tea" aria-selected="true">茶湯・珍珠</button>
+    <button class="page-tab" role="tab" data-page="top" aria-selected="false">配料</button>
+  </div>
+  <div class="clockbox"><div class="clockrow"><span class="cloud" id="cloud" data-s="off" aria-hidden="true"></span><div class="clock num" id="clock">--:--:--</div></div><div class="shop" id="shop" data-s="closed"></div></div>
+</div>
+<div class="alerts" id="alerts" aria-live="assertive"></div>
+<main id="main"></main>
+<div class="strip" id="strip"></div>
+
+<div class="sheet-bg" id="sheet" hidden><div class="sheet" id="sheet-box" role="dialog" aria-modal="true"></div></div>
+<div class="expire-bg" id="expire" hidden><div class="expire" role="alertdialog" aria-modal="true" aria-labelledby="xtitle" id="expire-box"></div></div>
+<div class="gate-bg" id="gate" hidden><div class="gate" id="gate-box"></div></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* ===== items ===== */
+const ITEMS=[
+  {k:"冬青",b:"#6b4426"},{k:"秋青",b:"#2e7d3a"},{k:"春青",b:"#c0392b"},{k:"綠茶",b:"#1e1e1e"},
+  {k:"夏青",b:"#2563a8"},{k:"紅茶",b:"#1e1e1e"},
+  {k:"香鳶尾青茶",b:"#ece6d6",fg:"#3a3527",per:1.5,limited:true,takeout:true},
+  {k:"國寶茶",b:"#7a7f78",pot:true,mults:{1:.8,2:1.5,3:2.3}},{k:"菊花茶",b:"#7a7f78",pot:true,mults:{1:.8,2:1.5,3:2.3}},{k:"蕎麥茶",b:"#7a7f78",pot:true,per:1.5},{k:"玄米茶",b:"#7a7f78",pot:true,per:1.5},{k:"奶茶",b:"#7a7f78",pot:true,per:1.5},
+  {k:"琥珀珍珠",b:"#8a5424",pearl:true},{k:"蕎麥珍珠",b:"#6e5a45",pearl:true}
+];
+/* toppings: boxes per 份, and how many boxes to keep in the fridge on busy / quiet days */
+const TOPS=[
+  {n:"杏仁凍",box:1,busy:2,quiet:1,max:2},{n:"菜燕",box:1,busy:3,quiet:2,max:3},
+  {n:"茶凍",box:1,busy:4,quiet:2,max:3},{n:"婚貴",box:2,busy:5,quiet:3,max:3}
+];
+const topBy=Object.fromEntries(TOPS.map(t=>[t.n,t]));
+const PEARL_SIZES=[500,1000,1500,2000,2500,3000];
+const TEA_MULTS=[1,2,3];
+const M=6e4,H=60*M,D=24*H;
+const TEA_LIFE=4*H, PEARL_COOK=1.5*H, PEARL_LIFE=3*H, PEARL_HEADSUP=15*M, TOP_DAYS=3, AVG_DAYS=28;
+const byKey=Object.fromEntries(ITEMS.map(i=>[i.k,i]));
+const isPearl=k=>!!byKey[k]?.pearl;
+const per=k=>byKey[k]?.per||1;
+const bucketsFor=(k,n)=>byKey[k]?.mults?.[n]??n*per(k);
+const bk=b=>b.buckets??bucketsFor(b.item,b.size);
+const fmt=n=>(Math.round(n*100)/100).toLocaleString("zh-TW");
+const amt=(k,n)=>isPearl(k)?`${fmt(n)}g`:byKey[k]?.pot?`${n}倍・${bucketsFor(k,n)}桶`:`${bucketsFor(k,n)}桶`;
+/* cooked and wasted amount of one record, in its own unit (桶 / g / 份) */
+const cookedOf=b=>b.kind==="top"?(b.boxes||1):isPearl(b.item)?b.size:bk(b);
+const wasteOf=b=>b.kind==="top"?(b.wasteBucket||0):isPearl(b.item)?(b.waste||0):(b.wasteBucket||0);
+const $=id=>document.getElementById(id);
+
+/* ===== state (saved in this device's browser) ===== */
+let batches=[], tops=[], bigDays=new Set(); /* "YYYY-MM-DD|品項": that item had a big order that day */
+const topItems=TOPS.map(t=>t.n);
+const DEFAULT_STAFF=["力瑜","予諠","Jessie","Vicky","晨蕊","以馨","小唐","田祈","ㄍㄨㄅ","微媛","小潔","庭瑋"];
+let lateOk=false, mergeAmt=0, delMode=null, staff=[...DEFAULT_STAFF], selStaff=[], staffEdit=false;
+let page="tea", sheet=null, openWaste=null, confirmDel=null, pearlMode="cook";
+let recView="day", recDay=null, recWd=new Date().getDay();
+let fridgeLog={}; /* dayKey -> {配料: {count, exp}}: boxes counted in the fridge before making, and how many of them expire tonight */
+let topExtra={};  /* dayKey -> {配料: extra boxes made for a big order} */
+let busyOverride={}; /* dayKey -> true/false when staff flips today's busy setting */
+try{const p=localStorage.getItem("board-page");if(p==="top")page="top"}catch(e){}
+let seq=0; const newId=()=>Date.now().toString(36)+(seq++);
+function toast(t){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2400)}
+
+const STORE_KEY="tea-board-v1";
+/* ===== cloud sync: Firebase Firestore, shared by every device with the same 店號 =====
+   Layout: shops/{店號}/batches/{id}, shops/{店號}/tops/{id}, shops/{店號}/meta/state. Last writer wins per document. */
+const FIREBASE_CONFIG=window.FIREBASE_CONFIG||null;
+const LOCAL_KEY="tea-board-device";
+let shopCode=null;
+function loadDevice(){try{const o=JSON.parse(localStorage.getItem(LOCAL_KEY)||"{}");shopCode=o.shopCode||null;selStaff=o.selStaff||[]}catch(e){}}
+function saveDevice(){try{localStorage.setItem(LOCAL_KEY,JSON.stringify({shopCode,selStaff}))}catch(e){}}
+const stable=o=>JSON.stringify(o,(k,v)=>v&&typeof v==="object"&&!Array.isArray(v)?Object.keys(v).sort().reduce((a,x)=>(a[x]=v[x],a),{}):v);
+const clean=o=>JSON.parse(JSON.stringify(o));
+const metaOf=()=>({bigDays:[...bigDays],fridgeLog,topExtra,busyOverride,staff,stopped});
+const cloud={on:false,ready:false,got:{},base:null,last:{batches:{},tops:{},meta:null},status:"",
+  start(code){
+    try{if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG)}catch(e){this.fail("設定錯誤");return}
+    const db=firebase.firestore();
+    db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+    this.base=db.collection("shops").doc(code);this.on=true;this.set("連線中…");
+    /* sign in anonymously; if the account is ever removed or signed out, quietly sign in again */
+    const auth=firebase.auth();let listening=false;
+    auth.onAuthStateChanged(u=>{if(u){if(!listening){listening=true;this.listen()}}else auth.signInAnonymously().catch(e=>this.fail("登入失敗（"+(e.code||e.message)+"）"))});
+  },
+  fail(t){this.set(t);toast(t)},
+  set(t){this.status=t;const el=$("cloud");if(el){el.dataset.s=t==="已同步"?"ok":/中斷|失敗|錯誤/.test(t)?"bad":"wait";el.title=t}},
+  done(k){this.got[k]=1;if(this.got.batches&&this.got.tops&&this.got.meta)this.ready=true;render()},
+  listen(){
+    const cut=Date.now()-70*D;
+    [["batches",v=>batches=v],["tops",v=>tops=v]].forEach(([col,put])=>
+      this.base.collection(col).where("startAt",">=",cut).onSnapshot(s=>{
+        const arr=s.docs.map(d=>({...d.data(),id:d.id}));
+        this.last[col]=Object.fromEntries(arr.map(x=>[x.id,stable(clean(x))]));put(arr);
+        this.set(s.metadata.hasPendingWrites?"同步中…":s.metadata.fromCache?"離線中（恢復連線會自動上傳）":"已同步");this.done(col);
+      },e=>this.fail("同步中斷（"+e.code+"）")));
+    this.base.collection("meta").doc("state").onSnapshot(d=>{
+      const o=d.exists?d.data():{};
+      bigDays=new Set(o.bigDays||[]);fridgeLog=o.fridgeLog||{};topExtra=o.topExtra||{};busyOverride=o.busyOverride||{};
+      staff=o.staff?.length?o.staff:[...DEFAULT_STAFF];stopped=o.stopped||{};selStaff=selStaff.filter(n=>staff.includes(n));
+      this.last.meta=d.exists?stable(clean(metaOf())):null;this.done("meta");
+    },e=>this.fail("同步中斷（"+e.code+"）"));
+  },
+  push(){
+    if(!this.ready)return;
+    const wb=this.base.firestore.batch();let n=0;
+    [["batches",batches],["tops",tops]].forEach(([col,arr])=>{
+      const prev=this.last[col],seen={};
+      arr.forEach(x=>{const c=clean(x),k=stable(c);seen[x.id]=1;if(prev[x.id]!==k){wb.set(this.base.collection(col).doc(x.id),c);prev[x.id]=k;n++}});
+      Object.keys(prev).forEach(id=>{if(!seen[id]){wb.delete(this.base.collection(col).doc(id));delete prev[id];n++}});
+    });
+    const m=clean(metaOf()),mk=stable(m);if(mk!==this.last.meta){wb.set(this.base.collection("meta").doc("state"),m);this.last.meta=mk;n++}
+    if(n)wb.commit().catch(e=>this.fail("沒有存到（"+e.code+"），請檢查網路"));
+  }
+};
+function showGate(){
+  $("gate").hidden=false;
+  $("gate-box").innerHTML=`<h2>後場效期板</h2><p class="note">請輸入店號。店號在店內群組，第一次輸入後這支手機會記住。</p>
+    <form class="field" id="gateform"><input id="gatecode" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="店號" value=""><button class="btn pri" type="submit">進入</button></form>`;
+  setTimeout(()=>$("gatecode")?.focus(),50);
+}
+function enterShop(code){code=code.trim().toLowerCase();if(!/^[a-z0-9-]{6,40}$/.test(code)){toast("店號格式不對");return false}
+  shopCode=code;saveDevice();$("gate").hidden=true;cloud.start(code);return true}
+
+function save(){if(cloud.on){saveDevice();cloud.push();return}try{localStorage.setItem(STORE_KEY,JSON.stringify({batches,tops,bigDays:[...bigDays],fridgeLog,topExtra,busyOverride,staff,selStaff,stopped}))}catch(e){}}
+function load(){loadDevice();if(FIREBASE_CONFIG&&window.firebase){
+  const m=location.hash.match(/^#([a-z0-9-]{6,40})$/i);if(m){shopCode=m[1].toLowerCase();saveDevice();history.replaceState(null,"",location.pathname+location.search)}
+  shopCode?cloud.start(shopCode):showGate();return}
+  if(FIREBASE_CONFIG)setTimeout(()=>toast("連不上同步伺服器，先存在這支手機，請檢查網路後重新整理"),800);
+  try{const o=JSON.parse(localStorage.getItem(STORE_KEY)||"null");if(!o)return;const cut=Date.now()-70*864e5;
+  batches=(o.batches||[]).filter(b=>b.startAt>=cut||b.status==="active");tops=(o.tops||[]).filter(t=>t.startAt>=cut||t.status==="active");
+  bigDays=new Set(o.bigDays||[]);fridgeLog=o.fridgeLog||{};topExtra=o.topExtra||{};busyOverride=o.busyOverride||{};staff=o.staff?.length?o.staff:[...DEFAULT_STAFF];{const t=dayKey(Date.now());stopped=o.stopped?.[t]?{[t]:o.stopped[t]}:{}};selStaff=(o.selStaff||[]).filter(n=>staff.includes(n))}catch(e){}}
+
+/* ===== time helpers ===== */
+/* early staff start cooking at 8:00; shop is open 10:00–21:00 */
+const PREP_H=8, OPEN_H=10, CLOSE_H=21;
+/* tea lasts 4h, so the last brew of the day is 17:00 (good until closing at 21:00) */
+const LAST_TEA_H=CLOSE_H-TEA_LIFE/H;
+let stopped={}; /* dayKey -> [品項] staff marked as finished for the day */
+const isStopped=(k,now)=>(stopped[dayKey(now)]||[]).includes(k);
+const pastLastTea=now=>{const h=(now-startOfDay(now))/H;return h>=LAST_TEA_H&&h<CLOSE_H};
+function shopState(now){const h=(now-startOfDay(now))/H;
+  if(h>=OPEN_H&&h<CLOSE_H)return{s:"open",t:"營業中"};
+  if(h>=PREP_H&&h<OPEN_H)return{s:"prep",t:"準備中"};
+  return{s:"closed",t:"已打烊"};}
+const pad=n=>String(n).padStart(2,"0");
+const dayKey=t=>{const d=new Date(t);return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())};
+const hm=t=>{const d=new Date(t);return pad(d.getHours())+":"+pad(d.getMinutes())};
+const md=t=>{const d=new Date(t);return (d.getMonth()+1)+"/"+d.getDate()};
+const WK="日一二三四五六";
+const startOfDay=t=>{const d=new Date(t);d.setHours(0,0,0,0);return d.getTime()};
+const dayDiff=(a,b)=>Math.round((startOfDay(a)-startOfDay(b))/D);
+/* 三四五 is the busy stretch; 一二 and weekends are quieter */
+const isBusyDefault=t=>{const w=new Date(t).getDay();return w>=3&&w<=5};
+const isBusy=t=>busyOverride[dayKey(t)]??isBusyDefault(t);
+const WD_ORDER=[1,2,3,4,5,6,0];
+function fmtLeft(ms){const neg=ms<0;ms=Math.abs(ms);return (neg?"-":"")+Math.floor(ms/H)+":"+pad(Math.floor(ms%H/M))+":"+pad(Math.floor(ms%M/1e3))}
+const readyAt=b=>b.readyAt||b.startAt;
+function phase(b,now){if(isPearl(b.item)&&now<readyAt(b))return"cook";const l=b.expireAt-now;return l<=0?"dead":l<30*M?"warn":"ok"}
+function timer(b,now){
+  if(phase(b,now)==="cook")return{to:readyAt(b),from:b.startAt,cap:`${hm(readyAt(b))} 起鍋`};
+  return{to:b.expireAt,from:readyAt(b),cap:b.expireAt<=now?"已過期，請報廢":`到 ${hm(b.expireAt)}`};
+}
+/* tea location: every tea batch is split into parts on the counter (檯面上), in the standby area (備茶區) or in the fridge (冰箱).
+   Expiry stays 4h from cooking wherever a part sits. */
+const isTea=k=>!byKey[k]?.pearl;
+/* plain teas (春夏秋冬紅綠) sit on the counter with a standby bucket behind; pot teas and 香鳶尾 keep exactly one bucket on the counter and the rest in the fridge */
+const isTakeout=k=>!!byKey[k]?.pot||!!byKey[k]?.takeout;
+const isSingle=k=>!byKey[k]?.pearl&&!byKey[k]?.pot;
+const isPlain=k=>isTea(k)&&!isTakeout(k);
+const LOC={counter:"檯面上",standby:"備茶區",fridge:"冰箱"};
+const LOCS={counter:"檯",standby:"備",fridge:"冰"};
+function partsOf(b){if(!b.parts)b.parts=[{loc:b.loc==="standby"?"standby":"counter",amt:bk(b)}];return b.parts}
+const remainOf=b=>isTea(b.item)?partsOf(b).reduce((a,p)=>a+p.amt,0):1;
+const hasLoc=(b,l)=>partsOf(b).some(p=>p.loc===l);
+const onCounter=b=>!isTea(b.item)||hasLoc(b,"counter");
+function tidy(b){const m={};partsOf(b).forEach(p=>{if(p.amt>1e-9)m[p.loc]=(m[p.loc]||0)+p.amt});b.parts=["counter","standby","fridge"].filter(l=>m[l]).map(l=>({loc:l,amt:Math.round(m[l]*100)/100}))}
+const live=k=>batches.filter(b=>b.item===k&&b.status==="active").sort((a,b)=>(onCounter(a)?0:1)-(onCounter(b)?0:1)||a.expireAt-b.expireAt);
+const itemHasCounter=k=>isTea(k)&&batches.some(b=>b.item===k&&b.status==="active"&&hasLoc(b,"counter"));
+/* when nothing is on the counter, the oldest standby bucket moves up (fridge stays put until someone takes it out) */
+function promoteAll(){
+  batches.forEach(b=>{if(b.status==="active"&&isTea(b.item)){tidy(b);if(!b.parts.length){b.status="done";b.endAt=b.endAt||Date.now()}}});
+  /* plain teas never go in the fridge (records from older versions move to standby) */
+  batches.forEach(b=>{if(b.status==="active"&&isPlain(b.item)&&hasLoc(b,"fridge")){b.parts.forEach(p=>{if(p.loc==="fridge")p.loc="standby"});tidy(b)}});
+  /* pot teas and 香鳶尾: at most one bucket on the counter, everything else in the fridge (also fixes records saved by older versions) */
+  ITEMS.forEach(i=>{if(!isTakeout(i.k))return;let used=false;
+    live(i.k).forEach(b=>{partsOf(b).forEach(p=>{if(p.loc==="standby")p.loc="fridge";if(p.loc!=="counter")return;
+      if(used){p.loc="fridge";return}used=true;if(p.amt>1){b.parts.push({loc:"fridge",amt:p.amt-1});p.amt=1}});tidy(b)})});
+  ITEMS.forEach(i=>{if(!isPlain(i.k)||itemHasCounter(i.k))return;
+    const L=batches.filter(b=>b.item===i.k&&b.status==="active"&&hasLoc(b,"standby")).sort((a,b)=>a.expireAt-b.expireAt);
+    if(L.length){L[0].parts.find(p=>p.loc==="standby").loc="counter";tidy(L[0])}})}
+const partsText=b=>partsOf(b).map(p=>`${LOC[p.loc]} ${fmt(p.amt)} 桶`).join("・");
+function oldestFridge(k){const L=batches.filter(b=>b.item===k&&b.status==="active"&&hasLoc(b,"fridge")).sort((a,b)=>a.expireAt-b.expireAt);return L.length?{b:L[0]}:null}
+function locSummary(k){const m={};live(k).forEach(b=>partsOf(b).forEach(p=>m[p.loc]=(m[p.loc]||0)+p.amt));
+  return["counter","standby","fridge"].filter(l=>m[l]).map(l=>`${LOCS[l]}${fmt(m[l])}`).join("・")}
+const pct=(t,now)=>Math.max(0,Math.min(100,(t.to-now)/(t.to-t.from)*100));
+/* toppings: made on day D, good through the end of D+3 */
+const TOP_REMIND_H=20;
+const topDueAt=t=>startOfDay(t.expireAt)+TOP_REMIND_H*H;
+function topPhase(t,now){return now>=topDueAt(t)?"dead":startOfDay(t.expireAt)<=startOfDay(now)?"warn":"ok"}
+function topLeft(t,now){const ph=topPhase(t,now);return ph==="dead"?"需報廢":ph==="warn"?"今晚 8 點報廢":`剩 ${dayDiff(t.expireAt,now)} 天`}
+const fmtBox=v=>String(Math.round(v*10)/10);
+const batchLabel=t=>`${md(t.startAt)}-${md(t.expireAt)}`;
+const liveTop=n=>tops.filter(t=>t.name===n&&t.status==="active").sort((a,b)=>a.expireAt-b.expireAt);
+
+/* ===== today's running total per item ===== */
+function todayTotals(list,match){
+  const today=startOfDay(Date.now());let c=0,w=0;
+  list.forEach(b=>{if(b.startAt>=today&&match(b)){c+=cookedOf(b);w+=wasteOf(b)}});return{c,w};
+}
+const tallyHTML=(c,w,u)=>`<div class="tally">累計 <b>${fmt(c)}</b>${u}・報廢 <b class="${w?"bad":""}">${fmt(w)}</b>${u}</div>`;
+
+/* ===== pot drawing ===== */
+function potSVG(id){
+  const c="clip-"+String(id).replace(/[^\w-]/g,"");
+  const balls=[[38,58,1],[52,62,2],[66,57,3],[80,61,4],[46,70,5],[60,72,1],[74,70,3],[86,68,2],[34,68,4],[58,52,5],[72,50,2],[44,50,3]];
+  return `<svg class="potsvg" viewBox="0 0 120 96" aria-hidden="true">
+    <path class="steam" d="M42 22c-4-5 4-8 0-14"/><path class="steam s2" d="M60 20c-4-5 4-8 0-14"/><path class="steam s3" d="M78 22c-4-5 4-8 0-14"/>
+    <rect x="8" y="34" width="12" height="7" rx="3" class="rim"/><rect x="100" y="34" width="12" height="7" rx="3" class="rim"/>
+    <clipPath id="${c}"><path d="M22 36h76v38a8 8 0 0 1-8 8H30a8 8 0 0 1-8-8z"/></clipPath>
+    <path class="body" d="M22 36h76v38a8 8 0 0 1-8 8H30a8 8 0 0 1-8-8z"/>
+    <g clip-path="url(#${c})"><rect class="water" x="22" y="44" width="76" height="40"/>
+      ${balls.map(([x,y,k])=>`<g class="bob b${k}"><circle class="pearlball" cx="${x}" cy="${y}" r="5.2"/><circle class="hi" cx="${x-1.8}" cy="${y-1.8}" r="1.3"/></g>`).join("")}
+      <circle class="bub" cx="40" cy="46" r="2.4"/><circle class="bub u2" cx="64" cy="46" r="3"/><circle class="bub u3" cx="84" cy="46" r="2.2"/></g>
+    <rect class="rim" x="18" y="31" width="84" height="7" rx="3.5"/>
+    <path class="flame" d="M38 94c-4-4-3-8 0-11 3 3 4 7 0 11z"/><path class="flame f2" d="M60 94c-5-5-4-10 0-13 4 3 5 8 0 13z"/><path class="flame f3" d="M82 94c-4-4-3-8 0-11 3 3 4 7 0 11z"/><path class="flame in" d="M60 94c-2-2-2-5 0-7 2 2 2 5 0 7z"/>
+  </svg>`;
+}
+
+/* ===== tea / pearl board ===== */
+function card(i,now){
+  const L=live(i.k), b=L[0], p=i.pearl;
+  const style=`--bucket:${i.b};--liq:${i.b}`+(i.fg?`;--bandfg:${i.fg}`:"");
+  const tt=todayTotals(batches,x=>x.item===i.k);
+  const tally=tallyHTML(tt.c,tt.w,p?"g":"桶");
+  const al=p?pearlAlertMap[i.k]:null;
+  const alertLine=al?`<div class="alertline ${al.urgent?"urgent":""}">${al.msg.replace(/<\/?b>/g,"").replace(i.k+" ","")}</div>`:"";
+  if(!b){
+    const s=p?suggest(i.k):null;
+    const rule=p?"煮1.5h・效3h":i.limited?"限定":"效期4h";
+    return `<button class="card ${p?"pearl":""} ${isStopped(i.k,now)?"stopped":""}" data-open="${i.k}" style="${style}" data-phase="${al?(al.urgent?"dead":"warn"):"none"}">
+      <div class="band"><b class="${i.k.length>4?"long":""}">${i.k}</b><small>${rule}</small></div>
+      <div class="cbody"><div>${al?alertLine:`<div class="idle">${isStopped(i.k,now)?"今天不煮了":"＋ 點一下"+(p?"下鍋":"登記")}</div>`}${s&&s.rec?`<div class="sug">建議 ${fmt(s.rec)}g</div>`:""}</div></div>${tally}</button>`;
+  }
+  const ph=phase(b,now), t=timer(b,now);
+  return `<button class="card ${p?"pearl":""}" data-open="${i.k}" data-phase="${ph}" style="${style}">
+    <div class="band"><b class="${i.k.length>4?"long":""}">${i.k}</b><small>${p?amt(i.k,b.size):locSummary(i.k)}</small></div>
+    <div class="cbody"><div><div class="left" data-left="${b.id}">${fmtLeft(t.to-now)}</div><div class="cap">${!p&&!itemHasCounter(i.k)?"都在冰箱・":""}${t.cap}</div>${alertLine}</div>${p&&ph==="cook"?potSVG(b.id):""}</div>
+    <div class="bar"><i data-bar="${b.id}" style="width:${pct(t,now)}%"></i></div>${tally}${p&&L.length>1?`<span class="more">+${L.length-1}</span>`:""}</button>`;
+}
+function renderTeaBoard(){
+  const now=Date.now();
+  $("main").innerHTML=`<div class="board"><div class="pearls">${ITEMS.filter(i=>i.pearl).map(i=>card(i,now)).join("")}</div>
+    <div class="teas">${ITEMS.filter(i=>!i.pearl).map(i=>card(i,now)).join("")}</div></div>`;
+  const tt=todayTotals(batches,b=>!isPearl(b.item)), pt=todayTotals(batches,b=>isPearl(b.item));
+  $("strip").innerHTML=`<span>今天 茶 <b>${fmt(tt.c)}</b>桶 廢 <b class="${tt.w?"bad":""}">${fmt(tt.w)}</b>桶</span><span>珍珠 <b>${fmt(pt.c)}</b> 廢 <b class="${pt.w?"bad":""}">${fmt(pt.w)}</b>g</span>
+    <button class="btn" data-records>紀錄</button>`;
+}
+
+/* ===== toppings board ===== */
+const boxesOnHand=n=>liveTop(n).reduce((a,t)=>a+(t.boxes||1),0);
+const expBoxes=(n,now)=>liveTop(n).filter(t=>startOfDay(t.expireAt)<=startOfDay(now)).reduce((a,t)=>a+(t.boxes||1),0);
+const madeOn=(n,ds)=>tops.filter(t=>t.name===n&&t.startAt>=ds&&t.startAt<ds+D).reduce((a,t)=>a+(t.boxes||1),0);
+const wastedOn=(n,ds)=>tops.filter(t=>t.name===n&&t.status==="waste"&&t.endAt>=ds&&t.endAt<ds+D).reduce((a,t)=>a+(t.wasteBucket||0),0);
+const logOf=(ds,n)=>fridgeLog[dayKey(ds)]?.[n];
+/* boxes used on day ds: usable stock after the previous evening's count (minus what expired) + what was made then − this evening's count */
+function usageOn(n,ds){const prev=logOf(ds-D,n),cur=logOf(ds,n);if(!prev||!cur)return null;return Math.max(0,prev.count-prev.exp+madeOn(n,ds-D)-cur.count)}
+/* a day is skewed if a big order was made the evening before, or the day is marked big */
+const topBig=(ds,n)=>!!topExtra[dayKey(ds-D)]?.[n]||bigDays.has(bigKey(ds,n));
+function topSuggest(n,now){
+  const T=topBy[n],today=startOfDay(now),tom=today+D,busy=isBusy(tom),lg=logOf(today,n);
+  const have=lg?lg.count:boxesOnHand(n),exp=expBoxes(n,now),usable=Math.max(0,have-exp);
+  const lw=tom-7*D,u=topBig(lw,n)?null:usageOn(n,lw);
+  let base,src;
+  if(u!=null){base=u;src=`上週${WK[new Date(lw).getDay()]}（${md(lw)}）用了 ${fmtBox(u)} 盒`}
+  else{base=busy?T.busy:T.quiet;src=`還沒有上週${WK[new Date(tom).getDay()]}的紀錄，先用${busy?"忙":"不忙"}的預設 ${base} 盒`}
+  const extra=topExtra[dayKey(today)]?.[n]||0,target=base+extra,need=Math.max(0,target-usable);
+  /* the target is a ceiling: round down so the fridge never goes over it (婚貴 2.5 盒 → 1 份 = 4.5 盒, not 2 份 = 6.5 盒) */
+  const want=Math.floor(need/T.box+1e-9);
+  return{T,have,exp,usable,base,src,extra,target,need,want,portions:Math.min(want,T.max),counted:!!lg,tom};
+}
+function topCard(n,now){
+  const L=liveTop(n),tt=todayTotals(tops,x=>x.name===n),s=topSuggest(n,now);
+  const ph=!L.length?"none":L.some(t=>topPhase(t,now)==="dead")?"dead":s.exp?"warn":"ok";
+  return `<button class="card" data-topen="${n}" data-phase="${ph}" style="--bucket:var(--top)">
+    <div class="band"><b>${n}</b><small>1份=${s.T.box}盒</small></div>
+    <div class="cbody"><div class="left">${s.have?`冰箱 ${fmtBox(s.have)} 盒`:"冰箱沒有"}</div>
+      <div class="cap">${s.exp?`今晚報廢 ${s.exp} 盒・`:""}明天最多 ${fmtBox(s.target)} 盒${s.counted?"":"・未點數"}</div>
+      <div class="sug" style="color:var(--top)">${s.portions?`建議做 ${s.portions} 份（${s.portions*s.T.box} 盒）`:"夠了，不用做"}</div></div>${tallyHTML(tt.c,tt.w,"盒")}</button>`;
+}
+function renderTopBoard(){
+  const now=Date.now(),busy=isBusy(now+D);
+  $("main").innerHTML=`<div class="tops">${topItems.map(n=>topCard(n,now)).join("")}</div>`;
+  const tt=todayTotals(tops,()=>true);
+  $("strip").innerHTML=`<button class="tab" data-busy aria-pressed="${busy}">明天週${WK[new Date(now+D).getDay()]}：${busy?"忙":"不忙"} ⇄</button><span>配料 <b>${fmt(tt.c)}</b>盒 廢 <b class="${tt.w?"bad":""}">${fmt(tt.w)}</b>盒</span>
+    <button class="btn" data-records>紀錄</button>`;
+}
+function renderBoard(){
+  document.querySelectorAll(".page-tab").forEach(t=>t.setAttribute("aria-selected",t.dataset.page===page));
+  page==="tea"?renderTeaBoard():renderTopBoard();
+}
+
+/* ===== waste chips ===== */
+function wasteChips(id,p,max,size){
+  let opts;
+  if(p)opts=[1,.75,.5,.25];
+  else{opts=[.25,.5,.75];for(let v=1;v<=max+1e-9;v+=.5)opts.push(v);opts=opts.filter(v=>v<=max).reverse()}
+  return opts.map(f=>`<button class="btn bad" data-waste="${id}" data-f="${f}">${f} ${p?"鍋":"桶"}${p?`<br><small class="num">${fmt(Math.round(size*f))}g</small>`:""}</button>`).join("");
+}
+
+/* ===== item sheet (tea / pearl) ===== */
+function teaRowHTML(b,now){
+  const ph=phase(b,now),t=timer(b,now),parts=partsOf(b);let acts;
+  if(openWaste===b.id)acts=`<div class="acts"><span>報廢多少？（這批還有 ${fmt(remainOf(b))} 桶）</span>${wasteChips(b.id,false,remainOf(b),b.size)}<button class="btn" data-cancel>取消</button></div>`;
+  else if(confirmDel===b.id)acts=`<div class="acts"><button class="btn bad" data-del="${b.id}">確定刪除這筆</button><button class="btn" data-cancel>不刪</button></div>`;
+  else acts=`<div class="acts"><button class="btn" data-wopen="${b.id}">報廢</button><button class="btn ghost" data-delask="${b.id}">誤按刪除</button></div>`;
+  const partBtns=(p,i)=>{const a=`data-b="${b.id}" data-i="${i}"`;
+    if(p.loc==="fridge"){const first=oldestFridge(b.item);return !itemHasCounter(b.item)&&first&&first.b===b?`<button class="btn pri" data-pout ${a}>拿 ${fmt(Math.min(1,p.amt))} 桶出來</button>`:`<span class="note">${itemHasCounter(b.item)?"檯面用完再拿":"先拿較早的"}</span>`}
+    const fr=isTakeout(b.item)?`<button class="btn" data-pfridge ${a}>收進冰箱</button>`:"";
+    if(p.loc==="counter")return`<button class="btn pri" data-pused ${a}>用完了</button>${fr}`;
+    if(p.loc==="standby")return`<span class="note">檯面用完會自動補上</span>`;
+    return`<button class="btn pri" data-pout ${a}>${p.amt>1?"拿 1 桶出來":"拿出來"}</button>`};
+  return `<div class="row" data-phase="${ph}"><div class="row-top"><span class="left" data-left="${b.id}">${fmtLeft(t.to-now)}</span>
+    <span class="note">${amt(b.item,b.size)}・${hm(b.startAt)} 煮好・${t.cap}${b.carried?`・含舊茶 ${fmt(b.carried)} 桶`:""}</span></div>
+    <div class="parts">${parts.map((p,i)=>`<div class="part"><span class="loc" data-loc="${p.loc}">${LOC[p.loc]}</span><b class="num">${fmt(p.amt)}</b><span>桶</span><div class="acts">${partBtns(p,i)}</div></div>`).join("")}</div>${acts}</div>`;
+}
+function rowHTML(b,now){
+  if(isTea(b.item))return teaRowHTML(b,now);
+  const ph=phase(b,now), t=timer(b,now), p=isPearl(b.item);
+  let acts;
+  if(openWaste===b.id)acts=`<div class="acts"><span>報廢多少？${p?"":`（這筆共 ${bk(b)} 桶）`}</span>${wasteChips(b.id,p,bk(b),b.size)}<button class="btn" data-cancel>取消</button></div>`;
+  else if(confirmDel===b.id)acts=`<div class="acts"><button class="btn bad" data-del="${b.id}">確定刪除這筆</button><button class="btn" data-cancel>不刪</button></div>`;
+  else if(ph==="cook")acts=`<div class="acts"><button class="btn pri" data-ready="${b.id}">已起鍋</button><button class="btn ghost" data-delask="${b.id}">誤按刪除</button></div>`;
+  else acts=`<div class="acts">${isSingle(b.item)&&!onCounter(b)?`<button class="btn pri" data-tocounter="${b.id}">移到檯面</button>`:`<button class="btn pri" data-done="${b.id}">用完了</button>`}<button class="btn" data-wopen="${b.id}">報廢</button><button class="btn ghost" data-delask="${b.id}">誤按刪除</button></div>`;
+  return `<div class="row" data-phase="${ph}"><div class="row-top">${isSingle(b.item)?`<span class="loc" data-loc="${onCounter(b)?"counter":"standby"}">${onCounter(b)?LOC.counter:LOC.standby}</span>`:""}<span class="left" data-left="${b.id}">${fmtLeft(t.to-now)}</span>
+    <span class="note">${amt(b.item,b.size)}・${hm(b.startAt)} ${p&&b.readyAt!==b.startAt?"下鍋":"煮好"}・${ph==="cook"?t.cap+`，效期到 ${hm(b.expireAt)}`:t.cap}</span></div>${acts}</div>`;
+}
+function renderItemSheet(k){
+  const i=byKey[k], p=i.pearl, now=Date.now(), L=live(k);
+  let add;
+  if(p){
+    const s=suggest(k), cooking=pearlMode==="cook";
+    add=`<p class="lbl">新增一鍋</p>
+      <div class="modes"><button class="mode" data-mode="cook" aria-pressed="${cooking}">現在下鍋<small>${hm(now+PEARL_COOK)} 起鍋</small></button>
+      <button class="mode" data-mode="done" aria-pressed="${!cooking}">已經煮好了<small>效期到 ${hm(now+PEARL_LIFE)}</small></button></div>
+      ${s?`<p class="note">建議 ${s.rec?fmt(s.rec)+"g（外框）":"這時段可以不煮"}・依過去${s.group} ${s.days} 天同時段平均用 ${fmt(Math.round(s.avg))}g${s.skipped?`，已排除大單 ${s.skipped} 天`:""}</p>`:""}
+      <div class="big3">${PEARL_SIZES.map(z=>`<button class="size ${s&&s.rec===z?"sug2":""}" data-add="${z}">${fmt(z)}<small>g</small></button>`).join("")}</div>`;
+  }else{
+    if(i.pot){
+      add=`<p class="lbl">鍋煮好了・效期到 ${hm(now+TEA_LIFE)}・${itemHasCounter(k)?"檯面還有，全部放冰箱":"1 桶放檯面，其他放冰箱"}</p>
+      <div class="big3">${TEA_MULTS.map(n=>`<button class="size" data-add="${n}">${n}<small class="unit">倍</small><small>${bucketsFor(k,n)}桶${n===3?"・大單":""}</small></button>`).join("")}</div>`;
+    }else{
+      const hcnt=itemHasCounter(k);
+      const where=isTakeout(k)?(hcnt?`${per(k)} 桶都放冰箱`:`檯面 1 桶・冰箱 ${fmt(per(k)-1)} 桶`):`放${hcnt?LOC.standby:LOC.counter}`;
+      add=`<button class="btn pri wide" data-add="1" data-cnt="1">煮好了，開始計時<small>${where}・效期到 ${hm(now+TEA_LIFE)}</small></button>`;
+    }
+  }
+  const stop=isStopped(k,now)?`<button class="btn wide" data-unstop="${k}">今天不煮了・按這裡恢復<small>${p?"下鍋提醒會再出現":"卡片會恢復成可以登記"}</small></button>`
+    :(p||pastLastTea(now))?`<button class="btn wide" data-stop="${k}">今天不煮了<small>${p?"不再提醒下鍋":"卡片會標成今天不煮"}</small></button>`:"";
+  const box=$("sheet-box");box.style.setProperty("--bucket",i.b);box.style.setProperty("--liq",i.b);
+  box.innerHTML=`<div class="sheet-head"><span class="swatch"></span><h3>${k}</h3><button class="btn" data-close>關閉</button></div>
+    ${L.length?`<p class="lbl">線上 ${L.length} ${p?"鍋":"批"}</p><div class="rows">${L.map(b=>rowHTML(b,now)).join("")}</div>`:""}${add}${stop}`;
+}
+
+/* ===== topping sheet ===== */
+function topRowHTML(t,now){
+  const ph=topPhase(t,now),bx=t.boxes||1;let acts;
+  if(openWaste===t.id)acts=`<div class="acts"><span>報廢幾盒？</span>${Array.from({length:bx},(_,i)=>bx-i).map(v=>`<button class="btn bad" data-twaste="${t.id}" data-f="${v}">${v} 盒</button>`).join("")}<button class="btn" data-cancel>取消</button></div>`;
+  else if(confirmDel===t.id)acts=`<div class="acts"><button class="btn bad" data-tdel="${t.id}">確定刪除這筆</button><button class="btn" data-cancel>不刪</button></div>`;
+  else acts=`<div class="acts"><button class="btn pri" data-tdone="${t.id}">用完了</button><button class="btn" data-wopen="${t.id}">報廢</button><button class="btn ghost" data-delask="${t.id}">誤按刪除</button></div>`;
+  return `<div class="row" data-phase="${ph}"><div class="row-top"><span class="left" style="font-family:var(--f-body)">${topLeft(t,now)}</span>
+    <span class="note">${bx} 盒・效期梯次 ${batchLabel(t)}${t.by?.length?`・${t.by.join("、")}`:""}</span></div>${acts}</div>`;
+}
+function renderTopSheet(n){
+  const now=Date.now(),L=liveTop(n),exp=topExpire(now),s=topSuggest(n,now),T=s.T;
+  const qs=Array.from({length:T.max},(_,i)=>i+1);
+  const box=$("sheet-box");box.style.setProperty("--bucket","var(--top)");
+  box.innerHTML=`<div class="sheet-head"><span class="swatch"></span><h3>${n}</h3><span class="grp-chip">1 份 = ${T.box} 盒</span><button class="btn" data-close>關閉</button></div>
+    <p class="lbl">① 冰箱現在剩幾盒？${s.counted?"":"（還沒點數，先帶入系統裡的盒數）"}</p>
+    <div class="stepper"><button class="btn" data-fr="-0.5" aria-label="少半盒">−</button><input id="frin" class="num" type="number" inputmode="decimal" step="0.1" min="0" value="${fmtBox(s.have)}" aria-label="冰箱剩幾盒"><span>盒</span><button class="btn" data-fr="0.5" aria-label="多半盒">＋</button>${s.counted?"":`<button class="btn" data-fr="0">數量正確</button>`}</div>
+    <p class="note">${s.exp?`其中 <b style="color:var(--bad)">${s.exp} 盒今晚 8 點要報廢</b>，能用的是 ${fmtBox(s.usable)} 盒。`:`能用的是 ${fmtBox(s.usable)} 盒。`}</p>
+    <p class="lbl">② 明天（週${WK[new Date(s.tom).getDay()]}）要備多少</p>
+    <p class="note">${s.src}。</p>
+    <div class="stepper sm"><span>大單加量</span><button class="btn" data-fx="-1" aria-label="少一盒">−</button><b class="num">${s.extra}</b><span>盒</span><button class="btn" data-fx="1" aria-label="多一盒">＋</button></div>
+    <p class="note">明天最多備 ${fmtBox(s.target)} 盒。${s.portions?`<b style="color:var(--top)">建議做 ${s.portions} 份（${s.portions*T.box} 盒）</b>，做完冰箱共 ${fmtBox(s.usable+s.portions*T.box)} 盒${s.want>T.max?`（平常最多 ${T.max} 份，要多做請在最後一格輸入）`:""}。`:`${s.need>0?`只差 ${fmtBox(s.need)} 盒，不到 1 份，`:"已經夠了，"}不用做。`}</p>
+    <p class="lbl">③ 誰做的？（一個人做就選一個，有人幫忙就多選）</p>
+    <div class="acts staff">${staff.map(p=>`<button class="tab" data-staff="${p}" aria-pressed="${selStaff.includes(p)}">${p}</button>`).join("")}<button class="tab" data-staffedit aria-pressed="${staffEdit}">${staff.length?"編輯人員":"＋ 新增人員"}</button></div>
+    ${staffEdit?`<div class="merge"><form class="field" id="staffform"><input id="staffname" maxlength="8" placeholder="員工名字" autocomplete="off"><button class="btn pri" type="submit">加入</button></form>
+      ${staff.length?`<div class="acts">${staff.map(p=>`<button class="btn ghost" data-staffrm="${p}">✕ ${p}</button>`).join("")}</div>`:""}</div>`:""}
+    <p class="lbl">④ 做好了・效期梯次 ${md(now)}-${md(exp)}</p>
+    <div class="big3" style="grid-template-columns:repeat(${qs.length+1},minmax(0,1fr))">${qs.map(q=>`<button class="size ${s.portions===q?"sug2":""}" data-tadd="${n}" data-q="${q}">${q}<small class="unit">份</small><small>${q*T.box} 盒</small></button>`).join("")}
+      <form class="size custom" id="tqform"><input id="tq" type="number" inputmode="numeric" min="1" max="99" placeholder="其他" aria-label="自訂份數"><button class="btn pri" type="submit">登記</button></form></div>
+    ${L.length?`<p class="lbl">冰箱裡的梯次（先做的先用）</p><div class="rows">${L.map(t=>topRowHTML(t,now)).join("")}</div>`:""}`;
+}
+const topExpire=t=>startOfDay(t)+(TOP_DAYS+1)*D-1;
+
+/* ===== records ===== */
+const bigKey=(ds,name)=>dayKey(ds)+"|"+name;
+const isBigFor=(ds,name)=>bigDays.has(bigKey(ds,name))||batches.some(b=>b.big&&b.item===name&&b.startAt>=ds&&b.startAt<ds+D);
+function dayRecords(ds){
+  const de=ds+D;
+  const rows=ITEMS.map(i=>{const bs=batches.filter(b=>b.item===i.k&&b.startAt>=ds&&b.startAt<de);
+    return{name:i.k,color:i.b,grp:i.pearl?"珍珠":"茶湯",u:i.pearl?"g":"桶",n:bs.length,c:bs.reduce((a,b)=>a+cookedOf(b),0),w:bs.reduce((a,b)=>a+wasteOf(b),0)}});
+  rows.forEach(r=>r.used=r.c-r.w);
+  topItems.forEach(n=>{const bs=tops.filter(t=>t.name===n&&t.startAt>=ds&&t.startAt<de),w=wastedOn(n,ds),u=usageOn(n,ds),lg=logOf(ds,n);
+    const by=[...new Set(bs.flatMap(t=>t.by||[]))];
+    rows.push({name:n,by,color:"var(--top)",grp:"配料",u:"盒",n:bs.length,c:madeOn(n,ds),w,used:u,count:lg?.count})});
+  return rows;
+}
+function avgTable(){
+  const today=startOfDay(Date.now()),all=[],sel=[];let skipped=0;
+  for(let i=1;i<=AVG_DAYS;i++){const ds=today-i*D;
+    const open=batches.some(b=>b.startAt>=ds&&b.startAt<ds+D)||tops.some(t=>t.startAt>=ds&&t.startAt<ds+D);
+    if(!open)continue;
+    all.push(ds); if(new Date(ds).getDay()===recWd)sel.push(ds)}
+  const names=[...ITEMS.map(i=>({name:i.k,color:i.b,grp:i.pearl?"珍珠":"茶湯",u:i.pearl?"g":"桶",match:b=>b.item===i.k,list:batches})),
+    ...topItems.map(n=>({name:n,color:"var(--top)",grp:"配料",u:"盒",match:t=>t.name===n,list:tops}))];
+  const cell=(x,days0)=>{let days=days0.filter(d=>x.grp==="配料"?!topBig(d,x.name):!isBigFor(d,x.name));if(days0===all)skipped+=days0.length-days.length;
+    let c=0,w=0;
+    if(x.grp==="配料"){days=days.filter(d=>usageOn(x.name,d)!=null);days.forEach(d=>{const u=usageOn(x.name,d),ww=wastedOn(x.name,d);c+=u+ww;w+=ww})}
+    else days.forEach(d=>x.list.forEach(b=>{if(x.match(b)&&b.startAt>=d&&b.startAt<d+D){c+=cookedOf(b);w+=wasteOf(b)}}));
+    if(!days.length)return"—";
+    c/=days.length;w/=days.length;const r=c?w/c:0;
+    const r1=v=>x.u==="g"?fmt(Math.round(v)):fmt(Math.round(v*10)/10);
+    return `${r1(c-w)}<br><small>廢 ${r1(w)}${r>.2?" ⚠":""}${days.length<days0.length?`・排除大單 ${days0.length-days.length} 天`:""}</small>`};
+  let body="",last="";
+  names.forEach(x=>{if(x.grp!==last){body+=`<tr class="grp"><td colspan="3">${x.grp}（${x.u}／天）</td></tr>`;last=x.grp}
+    body+=`<tr style="--bucket:${x.color}"><td><span class="dot"></span>${x.name}</td><td class="num">${cell(x,sel)}</td><td class="num">${cell(x,all)}</td></tr>`});
+  return{body,sel,all,skipped};
+}
+function renderRecords(){
+  const box=$("sheet-box");
+  const head=`<div class="sheet-head"><h3>紀錄</h3><button class="btn" data-close>關閉</button></div>
+    <div class="seg" role="group" aria-label="檢視"><button class="tab" data-rv="day" aria-pressed="${recView==="day"}">每日用量</button><button class="tab" data-rv="avg" aria-pressed="${recView==="avg"}">星期平均</button></div>`;
+  const dayName=md(recDay??startOfDay(Date.now()));
+  const del=recView!=="day"?"":delMode?`<div class="confirm"><b>確定要刪除 ${dayName}${delMode==="day"?" 的全部紀錄":`「${delMode}」的紀錄`}嗎？</b><p class="note">${delMode==="day"?"這一天所有品項":`這一天「${delMode}」`}煮過、用完、報廢的紀錄${delMode==="day"||topBy[delMode]?"和冰箱點數":""}會清掉，包含正在計時、檯面和冰箱裡的。刪除後沒辦法復原。</p>
+      <div class="acts"><button class="btn bad" data-delok>確定刪除</button><button class="btn" data-delno>取消</button></div></div>`
+    :`<div class="acts"><button class="btn ghost" data-delask2="day">刪除 ${dayName} 全部紀錄</button><span class="note">要刪單一品項，按表格最右邊的「刪除」</span></div>`;
+  const demo=`<div class="demo-row">${del}</div><p class="status">${cloud.on?`店號 ${shopCode}・${cloud.status}。全店手機共用同一份紀錄。 `:"紀錄存在這台裝置的瀏覽器裡。清除瀏覽器資料或換裝置就看不到。"}配料的實際用量要靠每天點數冰箱才算得出來。</p>${cloud.on?`<button class="btn ghost xs" data-logout>換店號</button>`:""}`;
+  if(recView==="day"){
+    const ds=recDay??startOfDay(Date.now()), rows=dayRecords(ds);
+    let body="",last="";
+    rows.filter(r=>r.n||r.w||r.count!=null).forEach(r=>{if(r.grp!==last){body+=`<tr class="grp"><td colspan="7">${r.grp}</td></tr>`;last=r.grp}
+      const rate=r.c?r.w/r.c:0;
+      body+=`<tr style="--bucket:${r.color}"><td><label style="display:flex;align-items:center;gap:6px">${r.grp==="配料"?"":`<input type="checkbox" class="bigchk" title="大單" data-bigitem="${r.name}" aria-label="${r.name}有大單" ${isBigFor(ds,r.name)?"checked":""} ${batches.some(b=>b.big&&b.item===r.name&&b.startAt>=ds&&b.startAt<ds+D)?"disabled":""}>`}<span class="dot"></span>${r.name}${r.by?.length?`<small style="color:var(--muted)">（${r.by.join("、")}）</small>`:""}</label></td><td class="num">${r.n}</td><td class="num">${fmt(r.c)}${r.u}</td><td class="num">${fmt(r.w)}${r.u}</td><td class="num">${r.used==null?"—":fmt(r.used)+r.u}${r.count!=null?`<br><small>點數 ${r.count}</small>`:""}</td><td class="num ${rate>.2?"r-bad":""}">${Math.round(rate*100)}%</td><td><button class="btn ghost xs" data-delask2="${r.name}">刪除</button></td></tr>`});
+    const sum=(g,f)=>rows.filter(r=>r.grp===g).reduce((a,r)=>a+r[f],0);
+    const isToday=ds===startOfDay(Date.now());
+    box.innerHTML=head+`<div class="daynav"><button class="btn" data-dshift="-1" aria-label="前一天">‹</button><strong>${md(ds)}（${WK[new Date(ds).getDay()]}）${isToday?"今天":""}</strong><button class="btn" data-dshift="1" aria-label="後一天" ${isToday?"disabled":""}>›</button><span class="grp-chip">${isBusy(ds)?"忙":"不忙"}</span></div>
+      <p class="note">有大單的品項，在品項名稱前打勾，只有那個品項的這一天不列入平均。鍋煮茶選 3 倍會自動算大單。</p>
+      <div class="kpis"><div class="kpi"><span>茶湯</span><b class="num">${fmt(sum("茶湯","c"))}桶</b></div><div class="kpi ${sum("茶湯","w")?"bad":""}"><span>茶湯報廢</span><b class="num">${fmt(sum("茶湯","w"))}桶</b></div>
+        <div class="kpi"><span>珍珠</span><b class="num">${fmt(sum("珍珠","c"))}g</b></div><div class="kpi ${sum("珍珠","w")?"bad":""}"><span>珍珠報廢</span><b class="num">${fmt(sum("珍珠","w"))}g</b></div>
+        <div class="kpi"><span>配料</span><b class="num">${fmt(sum("配料","c"))}盒</b></div><div class="kpi ${sum("配料","w")?"bad":""}"><span>配料報廢</span><b class="num">${fmt(sum("配料","w"))}盒</b></div></div>
+      <div class="tbl-wrap"><table><thead><tr><th>☑大單・品項</th><th>次數</th><th>做量</th><th>報廢</th><th>實際用量</th><th>報廢率</th><th></th></tr></thead><tbody>${body||`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">這天沒有紀錄</td></tr>`}</tbody></table></div>`+demo;
+  }else{
+    const a=avgTable();
+    box.innerHTML=head+`<div class="seg" role="group" aria-label="星期">${WD_ORDER.map(w=>`<button class="tab" data-wd="${w}" aria-pressed="${recWd===w}">週${WK[w]}</button>`).join("")}</div>
+      <p class="note">近 ${AVG_DAYS} 天，每天平均實際用量（做量減報廢）。${a.skipped?`有大單的品項只排除那一天的那個品項（共 ${a.skipped} 筆）。`:""}⚠ 表示報廢率超過 20%。</p>
+      <div class="tbl-wrap"><table class="avg"><thead><tr><th>品項</th><th>週${WK[recWd]}平均<br><small>${a.sel.length} 天</small></th><th>每天平均<br><small>${a.all.length} 天</small></th></tr></thead><tbody>${a.body}</tbody></table></div>`+demo;
+  }
+}
+/* ===== sheet routing ===== */
+function renderSheet(){
+  if(!sheet){$("sheet").hidden=true;return}$("sheet").hidden=false;
+  if(sheet==="records")renderRecords();
+  else if(sheet.startsWith("top:"))renderTopSheet(sheet.slice(4));
+  else renderItemSheet(sheet);
+}
+function openSheet(s){sheet=s;lateOk=false;openWaste=confirmDel=null;pearlMode="cook";mergeAmt=0;delMode=null;staffEdit=false;renderSheet()}
+function closeSheet(){sheet=null;renderSheet()}
+
+/* ===== pearl suggestion & reminders ===== */
+function suggest(item){
+  const now=Date.now(), wd=new Date(now).getDay(), tod=now+PEARL_COOK-startOfDay(now); let days=0,sum=0,skipped=0;
+  for(let i=1;i<=AVG_DAYS;i++){const ds=startOfDay(now-i*D);if(new Date(ds).getDay()!==wd)continue;
+    const dayB=batches.filter(b=>b.item===item&&b.startAt>=ds&&b.startAt<ds+D&&b.status!=="active");
+    if(!dayB.length)continue;if(isBigFor(ds,item)){skipped++;continue}
+    days++;const from=ds+tod,to=from+PEARL_LIFE;dayB.forEach(b=>{const r=readyAt(b);if(r>=from&&r<to)sum+=b.size-(b.waste||0)})}
+  if(!days)return null;const avg=sum/days;
+  return{avg,days,skipped,group:"週"+WK[wd],rec:avg<=0?0:(PEARL_SIZES.find(z=>z>=avg)||PEARL_SIZES[PEARL_SIZES.length-1])};
+}
+let offToday=[];
+function pearlAlerts(now){
+  const today=startOfDay(now),out=[],open=today+OPEN_H*H,close=today+CLOSE_H*H;
+  if(now<today+PREP_H*H||now>=close)return out;
+  ITEMS.filter(i=>i.pearl).forEach(i=>{
+    if(offToday.includes(i.k+dayKey(now))||isStopped(i.k,now))return;
+    const L=batches.filter(b=>b.item===i.k&&b.status==="active");
+    /* stock must last from opening until closing */
+    const cover=L.length?Math.max(...L.map(b=>b.expireAt)):now;
+    if(cover>=close)return;
+    const until=Math.max(cover,now<open?open:cover)-PEARL_COOK-now;if(until>PEARL_HEADSUP)return;
+    const urgent=until<=0;
+    const msg=!L.length?(now<open?`<b>${i.k}</b> 開店前要煮好，現在下鍋 ${hm(now+PEARL_COOK)} 起鍋`:`<b>${i.k}</b> 沒有了，現在下鍋 ${hm(now+PEARL_COOK)} 才有`)
+      :urgent?`<b>${i.k}</b> ${hm(cover)} 到期，已晚 ${Math.round(-until/M)} 分鐘，快下鍋`
+      :`<b>${i.k}</b> ${hm(cover)} 到期，${hm(cover-PEARL_COOK)} 前要下鍋`;
+    out.push({k:i.k,msg,urgent});
+  });return out;
+}
+let lastAlertKey="",alerting=new Set();
+function renderAlerts(now,force){
+  const a=pearlAlerts(now),key=a.map(x=>x.msg).join("|"),sig=x=>x.k+(x.urgent?"!":"");
+  const fresh=a.filter(x=>!alerting.has(sig(x)));alerting=new Set(a.map(sig));
+  if(fresh.length)beep(fresh.some(x=>x.urgent)?3:2);
+  if(key===lastAlertKey&&!force)return;const changed=key!==lastAlertKey;lastAlertKey=key;
+  pearlAlertMap=Object.fromEntries(a.map(x=>[x.k,x]));
+  if(changed&&!force&&page==="tea")renderBoard();
+}
+let pearlAlertMap={};
+let ac=null;
+function beep(n){try{if(!ac)return;for(let i=0;i<n;i++){const o=ac.createOscillator(),g=ac.createGain();o.frequency.value=880;o.connect(g);g.connect(ac.destination);
+  const t=ac.currentTime+i*.35;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.3,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+.25);o.start(t);o.stop(t+.3)}}catch(e){}}
+document.addEventListener("pointerdown",()=>{try{if(!ac)ac=new(window.AudioContext||window.webkitAudioContext)();if(ac.state==="suspended")ac.resume()}catch(e){}},{passive:true});
+
+/* ===== expired items: full-screen notice until handled or snoozed ===== */
+let snooze={}; /* id -> time until which it stays quiet */
+function expiredList(now){
+  const out=[];
+  batches.forEach(b=>{if(b.status==="active"&&b.expireAt<=now&&!b.sample){const i=byKey[b.item];
+    out.push({id:b.id,kind:"tea",name:b.item,color:i.b,sub:`${isTea(b.item)?partsText(b):amt(b.item,b.size)}・${hm(b.expireAt)} 到期`,since:b.expireAt})}});
+  tops.forEach(t=>{if(t.status==="active"&&now>=topDueAt(t))
+    out.push({id:t.id,kind:"top",name:t.name,color:"var(--top)",sub:`效期梯次 ${batchLabel(t)} 需報廢・${t.boxes||1} 盒`,since:topDueAt(t),top:true})});
+  return out.sort((a,b)=>a.since-b.since);
+}
+let shownExpire="";
+function renderExpire(now,force){
+  const all=expiredList(now), due=all.filter(x=>!(snooze[x.id]>now));
+  const key=due.map(x=>x.id).join(",");
+  if(!due.length){$("expire").hidden=true;shownExpire="";return}
+  const fresh=due.some(x=>!shownExpire.split(",").includes(x.id));
+  if(key===shownExpire&&!force&&!$("expire").hidden)return;
+  shownExpire=key;
+  $("expire-box").innerHTML=`<h2 id="xtitle">要報廢了<span class="num">${hm(now)}</span></h2>
+    <p class="note">倒掉後按「已報廢」，會記成報廢。</p>
+    ${due.map(x=>`<div class="xrow" style="--bucket:${x.color}"><span class="sw"></span><div><b>${x.name}</b><small>${x.sub}</small></div>
+      <button class="btn bad" data-xwaste="${x.id}" data-xtop="${x.top?1:""}">已報廢</button></div>`).join("")}
+    <div class="xacts">${due.length>1?`<button class="btn bad" data-xall>全部已報廢</button>`:""}<button class="btn" data-xsnooze>10 分鐘後再提醒</button></div>`;
+  $("expire").hidden=false;
+  if(fresh)beep(3);
+}
+function wasteAll(id,isTop){
+  const now=Date.now();
+  if(isTop){const t=tops.find(x=>x.id===id);if(!t)return;patch(tops,id,{status:"waste",wasteBucket:t.boxes||1,endAt:now});return}
+  const b=batches.find(x=>x.id===id);if(!b)return;const p=isPearl(b.item);
+  patch(batches,id,{status:"waste",waste:p?b.size:remainOf(b),wasteBucket:p?1:remainOf(b),endAt:now});
+}
+
+/* ===== render + tick ===== */
+let phaseSig="";
+function sigNow(now){return batches.filter(b=>b.status==="active").map(b=>b.id+phase(b,now)).join(",")+"|"+tops.filter(t=>t.status==="active").map(t=>t.id+topPhase(t,now)).join(",")+"|"+dayKey(now)}
+function render(){const now=Date.now();promoteAll();save();phaseSig=sigNow(now);renderAlerts(now,true);renderBoard();
+  const ae=document.activeElement;if(!(ae&&ae.tagName==="INPUT"&&$("sheet-box").contains(ae)))renderSheet();renderExpire(now,true)}
+function tick(){
+  const now=Date.now(),d=new Date(now);
+  $("clock").textContent=pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds());
+  const st=shopState(now);if($("shop").dataset.s!==st.s||!$("shop").textContent){$("shop").dataset.s=st.s;$("shop").textContent=st.t}
+  if(sigNow(now)!==phaseSig){render();return}
+  batches.forEach(b=>{if(b.status!=="active")return;const t=timer(b,now);
+    document.querySelectorAll(`[data-left="${b.id}"]`).forEach(el=>el.textContent=fmtLeft(t.to-now));
+    document.querySelectorAll(`[data-bar="${b.id}"]`).forEach(el=>el.style.width=pct(t,now)+"%")});
+  renderAlerts(now);
+  renderExpire(now);
+}
+function addBatch(o){const sk=dayKey(o.startAt);if(stopped[sk])stopped[sk]=stopped[sk].filter(n=>n!==o.item);batches.push({id:newId(),status:"active",waste:0,wasteBucket:0,day:dayKey(o.startAt),...o})}
+function patch(list,id,p){const x=list.find(b=>b.id===id);if(x)Object.assign(x,p)}
+
+function addTop(name,q){const now=Date.now(),T=topBy[name],k=dayKey(now);
+  if(!selStaff.length){toast("請先選誰做的");staffEdit=!staff.length;return renderSheet()}
+  if(!logOf(now,name))(fridgeLog[k]??={})[name]={count:boxesOnHand(name),exp:expBoxes(name,now)};
+  tops.push({id:newId(),kind:"top",name,qty:q,boxes:q*T.box,startAt:now,expireAt:topExpire(now),status:"active",wasteBucket:0,by:[...selStaff]});
+  closeSheet();toast(`${name} ${q} 份（${q*T.box} 盒）效期梯次 ${md(now)}-${md(topExpire(now))}`);render();}
+function setFridge(n,v){const now=Date.now(),k=dayKey(now);(fridgeLog[k]??={})[n]={count:Math.max(0,Math.round(v*10)/10),exp:expBoxes(n,now)}}
+/* new tea batch: plain teas go to the counter (or standby if the counter is taken);
+   pot teas and 香鳶尾 put 1 bucket on the counter and the rest in the fridge (all in the fridge if a bucket is already out) */
+function addTea(k,z,cnt,now){
+  const carried=0;
+  const hc=itemHasCounter(k);
+  let size,parts;
+  if(isPlain(k)){size=1;parts=[{loc:hc?"standby":"counter",amt:1}]}
+  else{size=isSingle(k)?1:z;const B=bucketsFor(k,size),first=Math.min(1,B);parts=hc?[{loc:"fridge",amt:B}]:[{loc:"counter",amt:first}];if(!hc&&B>first)parts.push({loc:"fridge",amt:B-first})}
+  addBatch({item:k,size,buckets:bucketsFor(k,size),carried,parts,big:!!byKey[k].pot&&z===3,startAt:now,readyAt:now,expireAt:now+TEA_LIFE});
+  toast(`${k} ${amt(k,size)} 效期到 ${hm(now+TEA_LIFE)}`);
+}
+/* ===== events ===== */
+document.addEventListener("click",e=>{
+  const t=e.target.closest("button");if(!t)return;const d=t.dataset;
+  if(d.page){page=d.page;try{localStorage.setItem("board-page",page)}catch(e){}return renderBoard()}
+  if(d.open)return openSheet(d.open);
+  if(d.topen)return openSheet("top:"+d.topen);
+  if("records" in d){recDay=null;return openSheet("records")}
+  if("close" in d)return closeSheet();
+  if(d.mode){pearlMode=d.mode;return renderSheet()}
+  if(d.stop){const k=dayKey(Date.now());(stopped[k]??=[]).includes(d.stop)||stopped[k].push(d.stop);closeSheet();toast(`${d.stop} 今天不煮了`);return render()}
+  if(d.unstop){const k=dayKey(Date.now());stopped[k]=(stopped[k]||[]).filter(n=>n!==d.unstop);toast(`${d.unstop} 恢復`);return render()}
+  if(d.add&&sheet){const k=sheet,now=Date.now(),z=+d.add;closeSheet();
+    if(isPearl(k)&&pearlMode==="cook"){const r=now+PEARL_COOK;addBatch({item:k,size:z,startAt:now,readyAt:r,expireAt:r+PEARL_LIFE});toast(`${k} ${fmt(z)}g 下鍋，${hm(r)} 起鍋`)}
+    else if(isPearl(k)){addBatch({item:k,size:z,startAt:now,readyAt:now,expireAt:now+PEARL_LIFE});toast(`${k} ${fmt(z)}g 效期到 ${hm(now+PEARL_LIFE)}`)}
+    else{addTea(k,z,+d.cnt||1,now)}
+    return render()}
+  if(d.ready){const now=Date.now();patch(batches,d.ready,{readyAt:now,expireAt:now+PEARL_LIFE});toast(`已起鍋，效期到 ${hm(now+PEARL_LIFE)}`);return render()}
+  if(d.done){openWaste=confirmDel=null;patch(batches,d.done,{status:"done",waste:0,wasteBucket:0,endAt:Date.now()});toast("已標記用完");return render()}
+  if(d.staff){selStaff=selStaff.includes(d.staff)?selStaff.filter(n=>n!==d.staff):[...selStaff,d.staff];save();return renderSheet()}
+  if("staffedit" in d){staffEdit=!staffEdit;renderSheet();if(staffEdit)setTimeout(()=>$("staffname")?.focus(),30);return}
+  if(d.staffrm){staff=staff.filter(n=>n!==d.staffrm);selStaff=selStaff.filter(n=>n!==d.staffrm);save();return renderSheet()}
+  if("logout" in d){try{localStorage.removeItem(LOCAL_KEY)}catch(e){}location.reload();return}
+  if(d.delask2){delMode=d.delask2;return renderSheet()}
+  if("delno" in d){delMode=null;return renderSheet()}
+  if("delok" in d){
+    const ds=recDay??startOfDay(Date.now()),de=ds+D,k=dayKey(ds),inDay=t=>t.startAt>=ds&&t.startAt<de;
+    if(delMode==="day"){batches=batches.filter(b=>!inDay(b));tops=tops.filter(t=>!inDay(t));delete fridgeLog[k];delete topExtra[k];
+      bigDays=new Set([...bigDays].filter(x=>!x.startsWith(k+"|")));toast(`已刪除 ${md(ds)} 全部紀錄`)}
+    else if(delMode){const n=delMode;batches=batches.filter(b=>!(b.item===n&&inDay(b)));tops=tops.filter(t=>!(t.name===n&&inDay(t)));
+      if(fridgeLog[k])delete fridgeLog[k][n];if(topExtra[k])delete topExtra[k][n];bigDays.delete(k+"|"+n);toast(`已刪除 ${md(ds)}「${n}」的紀錄`)}
+    delMode=null;return render()}
+  if(d.b){const b=batches.find(x=>x.id===d.b);if(!b)return;const parts=partsOf(b),p=parts[+d.i];if(!p)return;
+    if("pused" in d){parts.splice(+d.i,1);if(!parts.length){b.status="done";b.endAt=Date.now()}toast("檯面這桶用完了")}
+    else if("pfridge" in d){p.loc="fridge";toast(`${b.item} 收進冰箱`)}
+    else if("pcounter" in d){batches.forEach(x=>{if(x.item===b.item&&x.status==="active")partsOf(x).forEach(q=>{if(q.loc==="counter")q.loc="standby"})});p.loc="counter";toast(`${b.item} 移到檯面`)}
+    else if("pout" in d){if(itemHasCounter(b.item)){toast("檯面還有，用完再拿");return}const take=Math.min(1,p.amt);p.amt-=take;parts.push({loc:"counter",amt:take});toast(`${b.item} 從冰箱拿出 ${fmt(take)} 桶`)}
+    return render()}
+  if(d.wopen){openWaste=d.wopen;confirmDel=null;return renderSheet()}
+  if(d.waste){const b=batches.find(x=>x.id===d.waste),f=+d.f,p=isPearl(b.item);openWaste=null;
+    patch(batches,d.waste,{status:"waste",waste:p?Math.round(b.size*f):f,wasteBucket:f,endAt:Date.now()});toast(`已記報廢 ${f} ${p?`鍋（${fmt(Math.round(b.size*f))}g）`:"桶"}`);return render()}
+  if(d.delask){confirmDel=d.delask;openWaste=null;return renderSheet()}
+  if(d.del){confirmDel=null;batches=batches.filter(b=>b.id!==d.del);toast("已刪除");return render()}
+  if("cancel" in d){openWaste=confirmDel=null;return renderSheet()}
+  if(d.off){const k=dayKey(Date.now());(stopped[k]??=[]).includes(d.off)||stopped[k].push(d.off);offToday.push(d.off+k);renderAlerts(Date.now(),true);return toast(`今天不再提醒${d.off}`)}
+  /* expired notice */
+  if(d.xwaste){wasteAll(d.xwaste,!!d.xtop);toast("已記報廢");return render()}
+  if("xall" in d){const now=Date.now();expiredList(now).filter(x=>!(snooze[x.id]>now)).forEach(x=>wasteAll(x.id,!!x.top));toast("全部已記報廢");return render()}
+  if("xsnooze" in d){const until=Date.now()+10*M;expiredList(Date.now()).forEach(x=>snooze[x.id]=until);$("expire").hidden=true;shownExpire="";return}
+  /* toppings */
+  if("busy" in d){const t=Date.now()+D,k=dayKey(t);busyOverride[k]=!isBusy(t);return render()}
+  if(d.fr!==undefined&&sheet?.startsWith("top:")){const n=sheet.slice(4),now=Date.now(),k=dayKey(now),s0=topSuggest(n,now);
+    setFridge(n,s0.have+(+d.fr));return render()}
+  if(d.fx!==undefined&&sheet?.startsWith("top:")){const n=sheet.slice(4),k=dayKey(Date.now());const v=Math.max(0,(topExtra[k]?.[n]||0)+(+d.fx));
+    (topExtra[k]??={})[n]=v;if(!v)delete topExtra[k][n];return render()}
+  if(d.tadd)return addTop(d.tadd,+d.q||1);
+  if(d.tdone){openWaste=confirmDel=null;const t=tops.find(x=>x.id===d.tdone);patch(tops,d.tdone,{status:"done",wasteBucket:0,endAt:Date.now()});toast("已標記用完");return render()}
+  if(d.twaste){openWaste=null;const t=tops.find(x=>x.id===d.twaste);patch(tops,d.twaste,{status:"waste",wasteBucket:+d.f,endAt:Date.now()});toast(`已記報廢 ${d.f} 盒`);return render()}
+  if(d.tdel){confirmDel=null;const t=tops.find(x=>x.id===d.tdel);tops=tops.filter(x=>x.id!==d.tdel);toast("已刪除");return render()}
+  /* records */
+  if(d.rv){recView=d.rv;delMode=null;return renderSheet()}
+  if(d.wd){recWd=+d.wd;return renderSheet()}
+  if(d.dshift){delMode=null;const cur=recDay??startOfDay(Date.now());recDay=Math.min(startOfDay(Date.now()),startOfDay(cur+(+d.dshift)*D+2*H));return renderSheet()}
+});
+document.addEventListener("change",e=>{
+  if(e.target.dataset?.bigitem){const k=bigKey(recDay??startOfDay(Date.now()),e.target.dataset.bigitem);e.target.checked?bigDays.add(k):bigDays.delete(k);renderSheet();renderBoard()}
+});
+document.addEventListener("change",e=>{
+  if(e.target.id!=="frin"||!sheet?.startsWith("top:"))return;
+  const v=parseFloat(e.target.value);if(!(v>=0)){toast("請輸入盒數，可以有小數點");return renderSheet()}
+  setFridge(sheet.slice(4),v);render();
+});
+document.addEventListener("submit",e=>{
+  if(e.target.id==="gateform"){e.preventDefault();enterShop($("gatecode").value);return}
+  if(e.target.id==="staffform"){e.preventDefault();const n=$("staffname").value.trim();if(!n)return;
+    if(!staff.includes(n))staff.push(n);if(!selStaff.includes(n))selStaff=[...selStaff,n];save();renderSheet();setTimeout(()=>$("staffname")?.focus(),30);return}
+  if(e.target.id!=="tqform"||!sheet?.startsWith("top:"))return;e.preventDefault();
+  const q=Math.floor(+$("tq").value);if(!(q>=1)){toast("請輸入份數");return}
+  addTop(sheet.slice(4),q);
+});
+$("sheet").addEventListener("click",e=>{if(e.target.id==="sheet")closeSheet()});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&sheet)closeSheet()});
+async function wake(){try{await navigator.wakeLock?.request("screen")}catch(e){}}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")wake()});wake();
+load();setInterval(tick,1000);tick();render();
+setInterval(()=>{renderBoard();if(sheet==="records")renderSheet()},60e3);
+</script>
+
+</body>
+</html>
