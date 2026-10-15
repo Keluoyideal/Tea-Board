@@ -299,6 +299,7 @@ td small{color:var(--muted);font-size:11px}
   .teas [data-open="蕎麥茶"]{order:10}
   .teas [data-open="玄米茶"]{order:11}
   .teas [data-open="奶茶"]{order:12}
+  .teas [data-open="冬露"]{order:13}
 }
 /* short screens (phone on its side): tighter chrome so the board gets the height */
 @media (orientation:landscape) and (max-height:500px){
@@ -350,6 +351,7 @@ const ITEMS=[
   {k:"蕎麥茶",b:"#7a7f78",pot:true,brew:20,rec:{buckets:[1,2,3],leaf:[120,280,440],water:[2700,6300,9900],ice:[1800,4200,6600],steep:"燜 20 分"}},
   {k:"玄米茶",b:"#7a7f78",pot:true,brew:20,rec:{buckets:[1,2,3],leaf:[120,280,440],water:[2700,6300,9900],ice:[1800,4200,6600],steep:"燜 20 分"}},
   {k:"奶茶",b:"#7a7f78",pot:true,brew:14,rec:{buckets:[1,2,3],leaf:[120,280,400],water:[2700,6300,9000],ice:[1800,4200,6000],cream:[360,840,1200],leafName:"天蟬紅茶",steep:"燜 14 分"}},
+  {k:"冬露",b:"#7a7f78",pot:true,rec:{syrup:[400,800,1200],water:[2000,4000,6000]}},
   {k:"琥珀珍珠",b:"#8a5424",pearl:true},{k:"蕎麥珍珠",b:"#6e5a45",pearl:true}
 ];
 /* toppings: boxes per 份, and how many boxes to keep in the fridge on busy / quiet days */
@@ -368,7 +370,7 @@ const byKey=Object.fromEntries(ITEMS.map(i=>[i.k,i]));
 const isPearl=k=>!!byKey[k]?.pearl;
 const per=k=>byKey[k]?.per||1;
 const LILY_ML=5000; /* one 百合桶 ≈ 5 L */
-const potLiters=(k,n)=>{const r=byKey[k]?.rec;if(!r)return null;const i=n-1;return (r.water[i]+r.ice[i]+(r.cream?.[i]||0))/1000};
+const potLiters=(k,n)=>{const r=byKey[k]?.rec;if(!r)return null;const i=n-1;return (r.water[i]+(r.ice?.[i]||0)+(r.cream?.[i]||0)+(r.syrup?.[i]||0))/1000};
 const bucketsFor=(k,n)=>{const fixed=byKey[k]?.rec?.buckets;if(fixed)return fixed[n-1];const L=potLiters(k,n);return L!=null?Math.round(L*1000/LILY_ML*10)/10:byKey[k]?.mults?.[n]??n*per(k)};
 const bk=b=>b.buckets??bucketsFor(b.item,b.size);
 const fmt=n=>(Math.round(n*100)/100).toLocaleString("zh-TW");
@@ -706,9 +708,9 @@ function renderItemSheet(k){
       <div class="big3">${PEARL_SIZES.map(z=>`<button class="size ${s&&s.rec===z?"sug2":""}" data-add="${z}">${fmt(z)}<small class="unit">g</small><small>約 ${cupsOf(z)} 杯</small></button>`).join("")}</div>`;
   }else{
     if(i.pot){
-      add=`<p class="lbl">鍋煮好了・效期到 ${untilTxt(now+TEA_LIFE,now)}・${itemHasCounter(k)?"檯面還有，全部放冰箱":"1 桶放檯面，其他放冰箱"}</p>
+      add=`<p class="lbl">${i.rec?.syrup?"調好了":"鍋煮好了"}・效期到 ${untilTxt(now+TEA_LIFE,now)}・${itemHasCounter(k)?"檯面還有，全部放冰箱":"1 桶放檯面，其他放冰箱"}</p>
       <div class="big3">${TEA_MULTS.map(n=>`<button class="size" data-add="${n}">${n}<small class="unit">倍</small><small>${bucketsFor(k,n)}桶${n===3?"・大單":""}</small></button>`).join("")}</div>
-      ${i.rec?`<div class="recipe"><b>配方（95°C・${i.rec.steep}）</b>${TEA_MULTS.map(n=>`<span>${n}倍：${i.rec.leafName||"茶葉"} ${i.rec.leaf[n-1]}g・水 ${i.rec.water[n-1]}ml・${i.rec.cream?`奶精 ${i.rec.cream[n-1]}g・`:""}冰塊 ${i.rec.ice[n-1]}g</span>`).join("")}</div>`:""}`;
+      ${i.rec?.syrup?`<div class="recipe"><b>配方</b>${TEA_MULTS.map(n=>`<span>${n}倍：冬瓜糖漿 ${i.rec.syrup[n-1]}g・冰水 ${i.rec.water[n-1]}ml</span>`).join("")}</div>`:i.rec?`<div class="recipe"><b>配方（95°C・${i.rec.steep}）</b>${TEA_MULTS.map(n=>`<span>${n}倍：${i.rec.leafName||"茶葉"} ${i.rec.leaf[n-1]}g・水 ${i.rec.water[n-1]}ml・${i.rec.cream?`奶精 ${i.rec.cream[n-1]}g・`:""}冰塊 ${i.rec.ice[n-1]}g</span>`).join("")}</div>`:""}`;
     }else{
       const hcnt=itemHasCounter(k);
       const where=isTakeout(k)?(hcnt?`${per(k)} 桶都放冰箱`:`檯面 1 桶・冰箱 ${fmt(per(k)-1)} 桶`):`放${hcnt?LOC.standby:LOC.counter}`;
