@@ -167,6 +167,7 @@ main{flex:1;min-height:0;display:grid}
 /* sheets */
 .sheet-bg{position:fixed;inset:0;background:color-mix(in srgb,var(--ink) 45%,transparent);display:flex;align-items:flex-end;justify-content:center;z-index:10;padding:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 .sheet{background:var(--surface);border-radius:14px;padding:16px;width:min(680px,100%);max-height:90%;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.sheet>*{flex-shrink:0} /* long sheets scroll as a whole; never squash the table */
 .sheet-head{display:flex;align-items:center;gap:10px}
 .sheet-head h3{margin:0;font-size:22px;font-weight:900}
 .sheet-head .swatch{width:16px;height:22px;border-radius:3px;background:var(--bucket);box-shadow:0 0 0 1px var(--band-edge)}
@@ -610,7 +611,7 @@ function renderTeaBoard(){
     <div class="teas">${ITEMS.filter(i=>!i.pearl).map(i=>card(i,now)).join("")}</div></div>`;
   const tt=todayTotals(batches,b=>!isPearl(b.item)), pt=todayTotals(batches,b=>isPearl(b.item));
   $("strip").innerHTML=`<span>今天 茶 <b>${fmt(tt.c)}</b>桶 廢 <b class="${tt.w?"bad":""}">${fmt(tt.w)}</b>桶</span><span>珍珠 <b>${fmt(pt.c)}</b> 廢 <b class="${pt.w?"bad":""}">${fmt(pt.w)}</b>g</span>
-    ${isClosedNow(now)||(now-startOfDay(now))/H>=CLOSE_H-.5?`<button class="btn pri" data-report>收班報表</button>`:""}<button class="btn" data-records>紀錄</button>`;
+    <button class="btn" data-records>今日紀錄</button>`;
 }
 
 /* ===== toppings board ===== */
@@ -651,7 +652,7 @@ function renderTopBoard(){
   $("main").innerHTML=`<div class="tops">${topItems.map(n=>topCard(n,now)).join("")}</div>`;
   const tt=todayTotals(tops,()=>true);
   $("strip").innerHTML=`<button class="tab" data-busy aria-pressed="${busy}">明天週${WK[new Date(now+D).getDay()]}${dayKind(now+D)&&dayKind(now+D)!=="週一"&&dayKind(now+D)!=="假日"?"・"+dayKind(now+D):""}：${busy?"忙":"不忙"} ⇄</button><span>配料 <b>${fmt(tt.c)}</b>盒 廢 <b class="${tt.w?"bad":""}">${fmt(tt.w)}</b>盒</span>
-    <button class="btn" data-records>紀錄</button>`;
+    <button class="btn" data-records>今日紀錄</button>`;
 }
 function renderBoard(){
   document.querySelectorAll(".page-tab").forEach(t=>t.setAttribute("aria-selected",t.dataset.page===page));
@@ -830,7 +831,7 @@ function renderRecords(){
   const dayName=md(recDay??startOfDay(Date.now()));
   const del=recView!=="day"?"":delMode?`<div class="confirm"><b>確定要刪除 ${dayName}${delMode==="day"?" 的全部紀錄":`「${delMode}」的紀錄`}嗎？</b><p class="note">${delMode==="day"?"這一天所有品項":`這一天「${delMode}」`}煮過、用完、報廢的紀錄${delMode==="day"||topBy[delMode]?"和冰箱點數":""}會清掉，包含正在計時、檯面和冰箱裡的。刪除後 ${TRASH_DAYS} 天內可以在下面「最近刪除」復原。</p>
       <div class="acts">${pinField()}<button class="btn bad" data-delok>確定刪除</button><button class="btn" data-delno>取消</button></div></div>`
-    :`<div class="acts"><button class="btn pri" data-reportday>複製 ${dayName} 收班報表</button><button class="btn ghost" data-delask2="day">刪除 ${dayName} 全部紀錄</button><span class="note">要刪單一品項，按表格最右邊的「刪除」</span></div>`;
+    :`<div class="acts"><button class="btn ghost" data-delask2="day">刪除 ${dayName} 全部紀錄</button><span class="note">要刪單一品項，按表格最右邊的「刪除」</span></div>`;
   const tr=[...trash].sort((a,b)=>b.startAt-a.startAt);
   const trashBox=recView!=="day"?"":`<div class="trash"><p class="lbl">最近刪除（${TRASH_DAYS} 天內可復原）</p>${tr.length?tr.map(g=>`<div class="trow"><span>${g.label}<small>${md(g.startAt)} ${hm(g.startAt)} 刪除</small></span>${trashDel===g.id?`<div class="confirm"><b>永久刪除後就救不回來了</b>${pinField()}<div class="acts"><button class="btn bad" data-trashok>永久刪除</button><button class="btn" data-trashno>取消</button></div></div>`
       :`<span class="acts"><button class="btn xs" data-restore="${g.id}">復原</button><button class="btn xs ghost" data-trashdel="${g.id}">刪除</button></span>`}</div>`).join(""):`<p class="note">沒有刪除的紀錄</p>`}</div>`;
@@ -1047,7 +1048,7 @@ document.addEventListener("click",e=>{
   if(d.page){page=d.page;try{localStorage.setItem("board-page",page)}catch(e){}return renderBoard()}
   if(d.open)return openSheet(d.open);
   if(d.topen)return openSheet("top:"+d.topen);
-  if("records" in d){recDay=null;return openSheet("records")}
+  if("records" in d){recView="day";recDay=reportDay(Date.now());return openSheet("records")}
   if("close" in d)return closeSheet();
   if(d.mode){pearlMode=d.mode;return renderSheet()}
   if(d.stop){const k=dayKey(Date.now());(stopped[k]??=[]).includes(d.stop)||stopped[k].push(d.stop);closeSheet();toast(`${d.stop} 今天不煮了`);return render()}
