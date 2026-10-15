@@ -82,6 +82,18 @@ main{flex:1;min-height:0;display:grid}
 .teas,.tops{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:minmax(0,1fr);gap:8px;min-height:0}
 @media (min-width:560px){.teas,.tops{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .tops{grid-template-columns:repeat(2,minmax(0,1fr))!important;grid-template-rows:repeat(2,minmax(0,1fr))}
+.teas{grid-template-columns:repeat(12,minmax(0,1fr))!important}
+.teas>*{grid-column:span 4}
+.teas>.narrow{grid-column:span 3}
+.teas>.narrow .band small{display:none}
+.teas>.card{container-type:inline-size}
+@container (max-width:120px){
+  .teas .left{font-size:min(19cqw,26px)!important}
+  .teas .idle{font-size:12px;white-space:nowrap}
+  .teas .cap{font-size:11px;white-space:nowrap}
+  .tally .tl{display:none}
+}
+@container (max-width:100px){.teas .tl2{display:none}}
 
 .tops .cbody{gap:4px}
 .tops .sug{font-size:14px}
@@ -284,7 +296,9 @@ td small{color:var(--muted);font-size:11px}
 @media (orientation:landscape) and (min-aspect-ratio:4/3){
   .board{grid-template-rows:none;grid-template-columns:minmax(0,1fr) minmax(0,3fr)}
   .pearls{grid-template-columns:none;grid-template-rows:1fr 1fr}
-  .teas{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .teas{grid-template-columns:repeat(42,minmax(0,1fr))!important}
+  .teas>*{grid-column:span 7}
+  .teas>.pot,.teas>.narrow{grid-column:span 6}
   .tops{grid-template-columns:repeat(4,minmax(0,1fr))!important;grid-template-rows:1fr}
   /* sideways, the first row follows the counter left to right */
   .teas [data-open="紅茶"]{order:1}
@@ -567,7 +581,7 @@ function todayTotals(list,match){
   const today=startOfDay(Date.now());let c=0,w=0;
   list.forEach(b=>{if(b.startAt>=today&&match(b)){c+=cookedOf(b);w+=wasteOf(b)}});return{c,w};
 }
-const tallyHTML=(c,w,u)=>`<div class="tally">累計 <b>${fmt(c)}</b>${u}・報廢 <b class="${w?"bad":""}">${fmt(w)}</b>${u}</div>`;
+const tallyHTML=(c,w,u)=>`<div class="tally"><span class="tl">累計 </span><b>${fmt(c)}</b>${u}・<span class="tl">報</span>廢 <b class="${w?"bad":""}">${fmt(w)}</b><span class="tl">${u}</span></div>`;
 
 /* ===== pot drawing ===== */
 function potSVG(id){
@@ -597,12 +611,12 @@ function card(i,now){
   if(!b){
     const s=p?suggest(i.k):null;
     const rule=p?"煮1.5h・效3h":i.limited?"限定":"效期4h";
-    return `<button class="card ${p?"pearl":""} ${isStopped(i.k,now)?"stopped":""}" data-open="${i.k}" style="${style}" data-phase="${al?(al.urgent?"dead":"warn"):"none"}">
+    return `<button class="card ${p?"pearl":""} ${i.pot||i.takeout?"pot":""} ${i.rec?.buckets||i.rec?.syrup?"narrow":""} ${isStopped(i.k,now)?"stopped":""}" data-open="${i.k}" style="${style}" data-phase="${al?(al.urgent?"dead":"warn"):"none"}">
       <div class="band"><b class="${i.k.length>4?"long":""}">${i.k}</b><small>${rule}</small></div>
-      <div class="cbody"><div>${al?alertLine:`<div class="idle">${isClosedNow(now)?"打烊中":isStopped(i.k,now)?"今天不煮了":p&&(now-startOfDay(now))/H>=LAST_PEARL_H?`${LAST_PEARL_H}:00 後不再下鍋`:"＋ 點一下"+(p?"下鍋":"登記")}</div>`}${s&&s.rec?`<div class="sug">建議 ${fmt(s.rec)}g</div>`:""}</div></div>${tally}</button>`;
+      <div class="cbody"><div>${al?alertLine:`<div class="idle">${isClosedNow(now)?"打烊中":isStopped(i.k,now)?"今天不煮了":p&&(now-startOfDay(now))/H>=LAST_PEARL_H?`${LAST_PEARL_H}:00 後不再下鍋`:(p?"＋ 點一下下鍋":"＋ <span class=\"tl2\">點一下</span>登記")}</div>`}${s&&s.rec?`<div class="sug">建議 ${fmt(s.rec)}g</div>`:""}</div></div>${tally}</button>`;
   }
   const ph=phase(b,now), t=timer(b,now);
-  return `<button class="card ${p?"pearl":""}" data-open="${i.k}" data-phase="${ph}" style="${style}">
+  return `<button class="card ${p?"pearl":""} ${i.pot||i.takeout?"pot":""} ${i.rec?.buckets||i.rec?.syrup?"narrow":""}" data-open="${i.k}" data-phase="${ph}" style="${style}">
     <div class="band"><b class="${i.k.length>4?"long":""}">${i.k}</b><small>${p?amt(i.k,b.size):locSummary(i.k)}</small></div>
     <div class="cbody"><div><div class="left" data-left="${b.id}">${fmtLeft(t.to-now)}</div>${al&&!p?alertLine:`<div class="cap">${!p&&!itemHasCounter(i.k)?"都在冰箱・":""}${t.cap}</div>${alertLine}`}</div>${p&&ph==="cook"?potSVG(b.id):""}</div>
     <div class="bar"><i data-bar="${b.id}" style="width:${pct(t,now)}%"></i></div>${tally}${p&&L.length>1?`<span class="more">+${L.length-1}</span>`:""}</button>`;
