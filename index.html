@@ -276,6 +276,8 @@ td small{color:var(--muted);font-size:11px}
 .gate-bg{position:fixed;inset:0;z-index:30;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px}
 .gate{width:min(420px,100%);display:flex;flex-direction:column;gap:12px}
 .gate h2{font-family:var(--f-display);font-size:28px;margin:0}
+.reporttxt{width:100%;min-height:260px;font:inherit;font-size:14px;line-height:1.6;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+.strip .btn+.btn{margin-left:0}
 .toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-weight:700;z-index:20;max-width:calc(100% - 32px)}
 /* landscape (phone or tablet on its side): pearls stacked on the left, teas in 2 rows of 6, toppings in one row of 4 */
 @media (orientation:landscape) and (min-aspect-ratio:4/3){
@@ -606,7 +608,7 @@ function renderTeaBoard(){
     <div class="teas">${ITEMS.filter(i=>!i.pearl).map(i=>card(i,now)).join("")}</div></div>`;
   const tt=todayTotals(batches,b=>!isPearl(b.item)), pt=todayTotals(batches,b=>isPearl(b.item));
   $("strip").innerHTML=`<span>今天 茶 <b>${fmt(tt.c)}</b>桶 廢 <b class="${tt.w?"bad":""}">${fmt(tt.w)}</b>桶</span><span>珍珠 <b>${fmt(pt.c)}</b> 廢 <b class="${pt.w?"bad":""}">${fmt(pt.w)}</b>g</span>
-    <button class="btn" data-records>紀錄</button>`;
+    ${isClosedNow(now)||(now-startOfDay(now))/H>=CLOSE_H-.5?`<button class="btn pri" data-report>收班報表</button>`:""}<button class="btn" data-records>紀錄</button>`;
 }
 
 /* ===== toppings board ===== */
@@ -754,6 +756,35 @@ const topExpire=t=>startOfDay(t)+(TOP_DAYS+1)*D-1;
 /* ===== records ===== */
 const bigKey=(ds,name)=>dayKey(ds)+"|"+name;
 const isBigFor=(ds,name)=>bigDays.has(bigKey(ds,name))||batches.some(b=>b.big&&b.item===name&&b.startAt>=ds&&b.startAt<ds+D);
+/* closing report as plain text, ready to paste into LINE or the evening checklist */
+const reportDay=now=>{const h=(now-startOfDay(now))/H;return startOfDay(h<NIGHT_END_H?now-D:now)};
+function dayReport(ds){
+  const rows=dayRecords(ds),f=v=>fmt(Math.round(v*100)/100),L=[];
+  L.push(`【${md(ds)}（${WK[new Date(ds).getDay()]}）收班・茶湯珍珠配料】`);
+  const sec=(g,line)=>{const r=rows.filter(x=>x.grp===g&&(x.n||x.c||x.w||x.count!=null));if(!r.length)return;L.push("",`▍${g}`);r.forEach(x=>L.push(line(x)))};
+  sec("茶湯",x=>`${x.name}　煮 ${f(x.c)} 桶・廢 ${f(x.w)} 桶`);
+  sec("珍珠",x=>`${x.name}　煮 ${f(x.c)}g（約${cupsOf(x.c)}杯）・廢 ${f(x.w)}g`);
+  sec("配料",x=>`${x.name}　做 ${f(x.c)} 盒・廢 ${f(x.w)} 盒${x.count!=null?`・冰箱點數 ${f(x.count)} 盒`:""}${x.by?.length?`（${x.by.join("、")}）`:""}`);
+  const sum=(g,k)=>rows.filter(x=>x.grp===g).reduce((a,x)=>a+x[k],0);
+  const open=batches.filter(b=>b.status==="active"&&b.startAt>=ds&&b.startAt<ds+D);
+  if(open.length)L.push("",`⚠ 還有 ${open.length} 項沒按用完或報廢：${[...new Set(open.map(b=>b.item))].join("、")}`);
+  if(L.length===1)L.push("","今天沒有紀錄");
+  else L.push("",`合計　茶湯 ${f(sum("茶湯","c"))} 桶・廢 ${f(sum("茶湯","w"))} 桶　珍珠 ${f(sum("珍珠","c"))}g・廢 ${f(sum("珍珠","w"))}g`);
+  return L.join("\n");
+}
+function copyReport(ds){
+  const txt=dayReport(ds);
+  const done=()=>toast("已複製，貼到群組就好");
+  const fallback=()=>{reportText=txt;openSheet("report")};
+  try{navigator.clipboard.writeText(txt).then(done,fallback)}catch(e){fallback()}
+}
+let reportText="";
+function renderReport(){
+  $("sheet-box").innerHTML=`<div class="sheet-head"><h3>收班報表</h3><button class="btn" data-close>關閉</button></div>
+    <p class="note">這台手機不讓網頁直接複製，請長按下面的文字全選後複製。</p>
+    <textarea id="reporttxt" class="reporttxt" readonly>${reportText.replace(/</g,"&lt;")}</textarea>`;
+  setTimeout(()=>{const t=$("reporttxt");if(t){t.focus();t.select()}},50);
+}
 function dayRecords(ds){
   const de=ds+D;
   const rows=ITEMS.map(i=>{const bs=batches.filter(b=>b.item===i.k&&b.startAt>=ds&&b.startAt<de);
@@ -792,7 +823,7 @@ function renderRecords(){
   const dayName=md(recDay??startOfDay(Date.now()));
   const del=recView!=="day"?"":delMode?`<div class="confirm"><b>確定要刪除 ${dayName}${delMode==="day"?" 的全部紀錄":`「${delMode}」的紀錄`}嗎？</b><p class="note">${delMode==="day"?"這一天所有品項":`這一天「${delMode}」`}煮過、用完、報廢的紀錄${delMode==="day"||topBy[delMode]?"和冰箱點數":""}會清掉，包含正在計時、檯面和冰箱裡的。刪除後 ${TRASH_DAYS} 天內可以在下面「最近刪除」復原。</p>
       <div class="acts">${pinField()}<button class="btn bad" data-delok>確定刪除</button><button class="btn" data-delno>取消</button></div></div>`
-    :`<div class="acts"><button class="btn ghost" data-delask2="day">刪除 ${dayName} 全部紀錄</button><span class="note">要刪單一品項，按表格最右邊的「刪除」</span></div>`;
+    :`<div class="acts"><button class="btn pri" data-reportday>複製 ${dayName} 收班報表</button><button class="btn ghost" data-delask2="day">刪除 ${dayName} 全部紀錄</button><span class="note">要刪單一品項，按表格最右邊的「刪除」</span></div>`;
   const tr=[...trash].sort((a,b)=>b.startAt-a.startAt);
   const trashBox=recView!=="day"?"":`<div class="trash"><p class="lbl">最近刪除（${TRASH_DAYS} 天內可復原）</p>${tr.length?tr.map(g=>`<div class="trow"><span>${g.label}<small>${md(g.startAt)} ${hm(g.startAt)} 刪除</small></span>${trashDel===g.id?`<div class="confirm"><b>永久刪除後就救不回來了</b>${pinField()}<div class="acts"><button class="btn bad" data-trashok>永久刪除</button><button class="btn" data-trashno>取消</button></div></div>`
       :`<span class="acts"><button class="btn xs" data-restore="${g.id}">復原</button><button class="btn xs ghost" data-trashdel="${g.id}">刪除</button></span>`}</div>`).join(""):`<p class="note">沒有刪除的紀錄</p>`}</div>`;
@@ -825,6 +856,7 @@ function renderRecords(){
 function renderSheet(){
   if(!sheet){$("sheet").hidden=true;return}$("sheet").hidden=false;
   if(sheet==="records")renderRecords();
+  else if(sheet==="report")renderReport();
   else if(sheet.startsWith("top:"))renderTopSheet(sheet.slice(4));
   else renderItemSheet(sheet);
 }
@@ -1026,6 +1058,8 @@ document.addEventListener("click",e=>{
   if("staffrmno" in d){staffDel=null;return renderSheet()}
   if("staffrmok" in d)return guarded(()=>{const n=staffDel;staff=staff.filter(x=>x!==n);selStaff=selStaff.filter(x=>x!==n);staffDel=null;toast(`已移除 ${n}`);render()});
   if("logout" in d){try{localStorage.removeItem(LOCAL_KEY)}catch(e){}location.reload();return}
+  if("report" in d)return copyReport(reportDay(Date.now()));
+  if("reportday" in d)return copyReport(recDay??reportDay(Date.now()));
   if(d.delask2){delMode=d.delask2;return renderSheet()}
   if("delno" in d){delMode=null;return renderSheet()}
   if("delok" in d)return guarded(()=>{
