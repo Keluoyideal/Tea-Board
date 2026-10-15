@@ -261,9 +261,13 @@ td small{color:var(--muted);font-size:11px}
 .expire h2 .num{font-size:15px;color:var(--muted);font-weight:500;margin-left:auto}
 .xrow{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--bad-bg);flex-wrap:wrap}
 .xrow .sw{width:12px;align-self:stretch;border-radius:3px;background:var(--bucket);box-shadow:0 0 0 1px var(--band-edge)}
-.xrow div{flex:1;min-width:8em}
+.xrow>div:not(.xchips){flex:1;min-width:8em}
+.xrow .xchips{flex:1 1 100%}
 .xrow b{font-size:20px;font-weight:900;display:block}
 .xrow small{color:var(--muted);font-size:13px}
+.xchips{display:flex;flex-wrap:wrap;gap:6px;flex:1 1 100%;order:3}
+.xchips .btn{min-height:44px;padding:6px 12px}
+.xchips .btn small{display:block;font-size:11px;font-weight:500;opacity:.9}
 .xacts{display:flex;gap:8px;flex-wrap:wrap}
 .xacts .btn{flex:1}
 .clockrow{display:flex;align-items:center;gap:6px}
@@ -899,7 +903,7 @@ function expiredList(now){
     out.push({id:t.id,kind:"top",name:t.name,color:"var(--top)",sub:`效期梯次 ${batchLabel(t)} 需報廢・${t.boxes||1} 盒`,since:topDueAt(t),top:true})});
   return out.sort((a,b)=>a.since-b.since);
 }
-let shownExpire="";
+let shownExpire="", xOpen=null;
 function renderExpire(now,force){
   const all=expiredList(now), due=all.filter(x=>!(snooze[x.id]>now));
   const key=due.map(x=>x.id).join(",");
@@ -908,12 +912,27 @@ function renderExpire(now,force){
   if(key===shownExpire&&!force&&!$("expire").hidden)return;
   shownExpire=key;
   $("expire-box").innerHTML=`<h2 id="xtitle">要報廢了<span class="num">${hm(now)}</span></h2>
-    <p class="note">倒掉後按「已報廢」，會記成報廢。</p>
+    <p class="note">倒掉前看一下剩多少，點「報廢多少」選實際倒掉的量。</p>
     ${due.map(x=>`<div class="xrow" style="--bucket:${x.color}"><span class="sw"></span><div><b>${x.name}</b><small>${x.sub}</small></div>
-      <button class="btn bad" data-xwaste="${x.id}" data-xtop="${x.top?1:""}">已報廢</button></div>`).join("")}
-    <div class="xacts">${due.length>1?`<button class="btn bad" data-xall>全部已報廢</button>`:""}<button class="btn" data-xsnooze>10 分鐘後再提醒</button></div>`;
+      ${xOpen===x.id?"":`<button class="btn bad" data-xopen="${x.id}">報廢多少？</button>`}
+      ${xOpen===x.id?`<div class="xchips">${xChoices(x).map(([v,l,sub])=>`<button class="btn ${v?"bad":""}" data-xamt="${v}" data-xid="${x.id}" data-xtop="${x.top?1:""}">${l}${sub?`<small>${sub}</small>`:""}</button>`).join("")}<button class="btn ghost" data-xclose>取消</button></div>`:""}</div>`).join("")}
+    <div class="xacts">${due.length>1?`<button class="btn bad" data-xall>全部整桶倒掉</button>`:""}<button class="btn" data-xsnooze>10 分鐘後再提醒</button></div>`;
   $("expire").hidden=false;
   if(fresh)beep(3);
+}
+/* how much was actually poured out: [amount, label, sub-label]; 0 means nothing was left */
+function xChoices(x){
+  if(x.top){const t=tops.find(y=>y.id===x.id),bx=t?.boxes||1;return [...Array.from({length:bx},(_,i)=>[bx-i,`${bx-i} 盒`,i?"":"全部"]),[0,"沒剩","用完了"]]}
+  const b=batches.find(y=>y.id===x.id);if(!b)return[];
+  if(isPearl(b.item))return [[1,"全部",`${fmt(b.size)}g`],[.75,"3/4",`${fmt(Math.round(b.size*.75))}g`],[.5,"一半",`${fmt(Math.round(b.size*.5))}g`],[.25,"1/4",`${fmt(Math.round(b.size*.25))}g`],[0,"沒剩","用完了"]];
+  const rem=Math.round(remainOf(b)*100)/100,opts=new Set([rem]);[.25,.5,.75].forEach(v=>v<rem&&opts.add(v));for(let v=1;v<rem;v+=.5)opts.add(v);
+  return [...[...opts].sort((a,c)=>c-a).map(v=>[v,`${fmt(v)} 桶`,v===rem?"全部":""]),[0,"沒剩","用完了"]];
+}
+function wasteAmount(id,isTop,v){
+  const now=Date.now();
+  if(isTop){const t=tops.find(x=>x.id===id);if(!t)return;patch(tops,id,{status:v?"waste":"done",wasteBucket:v,endAt:now});return}
+  const b=batches.find(x=>x.id===id);if(!b)return;const p=isPearl(b.item);
+  patch(batches,id,p?{status:v?"waste":"done",waste:Math.round(b.size*v),wasteBucket:v,endAt:now}:{status:v?"waste":"done",waste:v,wasteBucket:v,endAt:now});
 }
 function wasteAll(id,isTop){
   const now=Date.now();
@@ -1040,7 +1059,9 @@ document.addEventListener("click",e=>{
   if("cancel" in d){openWaste=confirmDel=null;return renderSheet()}
   if(d.off){const k=dayKey(Date.now());(stopped[k]??=[]).includes(d.off)||stopped[k].push(d.off);offToday.push(d.off+k);renderAlerts(Date.now(),true);return toast(`今天不再提醒${d.off}`)}
   /* expired notice */
-  if(d.xwaste){wasteAll(d.xwaste,!!d.xtop);toast("已記報廢");return render()}
+  if(d.xopen){xOpen=d.xopen;return renderExpire(Date.now(),true)}
+  if("xclose" in d){xOpen=null;return renderExpire(Date.now(),true)}
+  if(d.xamt!==undefined&&d.xid){const v=+d.xamt;wasteAmount(d.xid,!!d.xtop,v);xOpen=null;toast(v?"已記報廢":"已記用完，沒有報廢");return render()}
   if("xall" in d){const now=Date.now();expiredList(now).filter(x=>!(snooze[x.id]>now)).forEach(x=>wasteAll(x.id,!!x.top));toast("全部已記報廢");return render()}
   if("xsnooze" in d){const until=Date.now()+10*M;expiredList(Date.now()).forEach(x=>snooze[x.id]=until);$("expire").hidden=true;shownExpire="";return}
   /* toppings */
