@@ -440,6 +440,8 @@ const cloud={on:false,ready:false,got:{},base:null,last:{batches:{},tops:{},meta
       Object.keys(prev).forEach(id=>{if(!seen[id]){wb.delete(this.base.collection(col).doc(id));delete prev[id];n++}});
     });
     const m=clean(metaOf()),mk=stable(m);if(mk!==this.last.meta){wb.set(this.base.collection("meta").doc("state"),m);this.last.meta=mk;n++}
+    try{const ds=reportDay(Date.now()),k=dayKey(ds),body=dayReport(ds,true),rk=k+"|"+body;
+      if(rk!==this.last.report){wb.set(this.base.collection("reports").doc(k),{day:k,body,text:dayReport(ds),updatedAt:Date.now()});this.last.report=rk;n++}}catch(e){}
     if(n)wb.commit().catch(e=>this.fail("沒有存到（"+e.code+"），請檢查網路"));
   }
 };
@@ -758,7 +760,7 @@ const bigKey=(ds,name)=>dayKey(ds)+"|"+name;
 const isBigFor=(ds,name)=>bigDays.has(bigKey(ds,name))||batches.some(b=>b.big&&b.item===name&&b.startAt>=ds&&b.startAt<ds+D);
 /* closing report as plain text, ready to paste into LINE or the evening checklist */
 const reportDay=now=>{const h=(now-startOfDay(now))/H;return startOfDay(h<NIGHT_END_H?now-D:now)};
-function dayReport(ds){
+function dayReport(ds,bodyOnly){
   const rows=dayRecords(ds),f=v=>fmt(Math.round(v*100)/100),L=[];
   L.push(`【${md(ds)}（${WK[new Date(ds).getDay()]}）收班・茶湯珍珠配料】`);
   const sec=(g,line)=>{const r=rows.filter(x=>x.grp===g&&(x.n||x.c||x.w||x.count!=null));if(!r.length)return;L.push("",`▍${g}`);r.forEach(x=>L.push(line(x)))};
@@ -770,7 +772,7 @@ function dayReport(ds){
   if(open.length)L.push("",`⚠ 還有 ${open.length} 項沒按用完或報廢：${[...new Set(open.map(b=>b.item))].join("、")}`);
   if(L.length===1)L.push("","今天沒有紀錄");
   else L.push("",`合計　茶湯 ${f(sum("茶湯","c"))} 桶・廢 ${f(sum("茶湯","w"))} 桶　珍珠 ${f(sum("珍珠","c"))}g・廢 ${f(sum("珍珠","w"))}g`);
-  return L.join("\n");
+  return (bodyOnly?L.slice(1).join("\n").replace(/^\n+/,"").replace(/\n▍/g,"\n▸").replace(/^▍/,"▸"):L.join("\n"));
 }
 function copyReport(ds){
   const txt=dayReport(ds);
