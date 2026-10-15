@@ -85,6 +85,14 @@ main{flex:1;min-height:0;display:grid}
 .teas{grid-template-columns:repeat(12,minmax(0,1fr))!important}
 .teas>*{grid-column:span 4}
 .teas>.narrow{grid-column:span 3}
+.teas [data-open="香鳶尾青茶"]{order:7}
+.teas [data-open="蕎麥茶"]{order:8}
+.teas [data-open="玄米茶"]{order:9}
+.teas [data-open="菊花茶"]{order:10}
+.teas [data-open="國寶茶"]{order:11}
+.teas [data-open="奶茶"]{order:12}
+.teas [data-open="冬露"]{order:13}
+
 .teas>.narrow .band small{display:none}
 .teas>.card{container-type:inline-size}
 @container (max-width:120px){
@@ -307,13 +315,6 @@ td small{color:var(--muted);font-size:11px}
   .teas [data-open="春青"]{order:4}
   .teas [data-open="秋青"]{order:5}
   .teas [data-open="冬青"]{order:6}
-  .teas [data-open="香鳶尾青茶"]{order:7}
-  .teas [data-open="國寶茶"]{order:8}
-  .teas [data-open="菊花茶"]{order:9}
-  .teas [data-open="蕎麥茶"]{order:10}
-  .teas [data-open="玄米茶"]{order:11}
-  .teas [data-open="奶茶"]{order:12}
-  .teas [data-open="冬露"]{order:13}
 }
 /* short screens (phone on its side): tighter chrome so the board gets the height */
 @media (orientation:landscape) and (max-height:500px){
@@ -365,7 +366,7 @@ const ITEMS=[
   {k:"蕎麥茶",b:"#7a7f78",pot:true,brew:20,rec:{buckets:[1,2,3],leaf:[120,280,440],water:[2700,6300,9900],ice:[1800,4200,6600],steep:"燜 20 分"}},
   {k:"玄米茶",b:"#7a7f78",pot:true,brew:20,rec:{buckets:[1,2,3],leaf:[120,280,440],water:[2700,6300,9900],ice:[1800,4200,6600],steep:"燜 20 分"}},
   {k:"奶茶",b:"#7a7f78",pot:true,brew:14,rec:{buckets:[1,2,3],leaf:[120,280,400],water:[2700,6300,9000],ice:[1800,4200,6000],cream:[360,840,1200],leafName:"天蟬紅茶",steep:"燜 14 分"}},
-  {k:"冬露",b:"#7a7f78",pot:true,rec:{syrup:[400,800,1200],water:[2000,4000,6000]}},
+  {k:"冬露",b:"#7a7f78",pot:true,maxMult:2,rec:{syrup:[400,800],water:[2000,4000]}},
   {k:"琥珀珍珠",b:"#8a5424",pearl:true},{k:"蕎麥珍珠",b:"#6e5a45",pearl:true}
 ];
 /* toppings: boxes per 份, and how many boxes to keep in the fridge on busy / quiet days */
@@ -378,6 +379,7 @@ const PEARL_SIZES=[500,1000,1500,2000,2500,3000];
 const PEARL_SWELL=1.6, PEARL_PER_CUP=150;
 const cupsOf=g=>Math.floor(g*PEARL_SWELL/PEARL_PER_CUP+1e-9);
 const TEA_MULTS=[1,2,3];
+const multsOf=i=>TEA_MULTS.filter(n=>n<=(i.maxMult||3));
 const M=6e4,H=60*M,D=24*H;
 const TEA_LIFE=4*H, PEARL_COOK=1.5*H, PEARL_LIFE=3*H, PEARL_HEADSUP=15*M, TOP_DAYS=3, AVG_DAYS=28;
 const byKey=Object.fromEntries(ITEMS.map(i=>[i.k,i]));
@@ -611,12 +613,12 @@ function card(i,now){
   if(!b){
     const s=p?suggest(i.k):null;
     const rule=p?"煮1.5h・效3h":i.limited?"限定":"效期4h";
-    return `<button class="card ${p?"pearl":""} ${i.pot||i.takeout?"pot":""} ${i.rec?.buckets||i.rec?.syrup?"narrow":""} ${isStopped(i.k,now)?"stopped":""}" data-open="${i.k}" style="${style}" data-phase="${al?(al.urgent?"dead":"warn"):"none"}">
+    return `<button class="card ${p?"pearl":""} ${i.pot||i.takeout?"pot":""} ${["菊花茶","國寶茶","奶茶","冬露"].includes(i.k)?"narrow":""} ${isStopped(i.k,now)?"stopped":""}" data-open="${i.k}" style="${style}" data-phase="${al?(al.urgent?"dead":"warn"):"none"}">
       <div class="band"><b class="${i.k.length>4?"long":""}">${i.k}</b><small>${rule}</small></div>
       <div class="cbody"><div>${al?alertLine:`<div class="idle">${isClosedNow(now)?"打烊中":isStopped(i.k,now)?"今天不煮了":p&&(now-startOfDay(now))/H>=LAST_PEARL_H?`${LAST_PEARL_H}:00 後不再下鍋`:(p?"＋ 點一下下鍋":"＋ <span class=\"tl2\">點一下</span>登記")}</div>`}${s&&s.rec?`<div class="sug">建議 ${fmt(s.rec)}g</div>`:""}</div></div>${tally}</button>`;
   }
   const ph=phase(b,now), t=timer(b,now);
-  return `<button class="card ${p?"pearl":""} ${i.pot||i.takeout?"pot":""} ${i.rec?.buckets||i.rec?.syrup?"narrow":""}" data-open="${i.k}" data-phase="${ph}" style="${style}">
+  return `<button class="card ${p?"pearl":""} ${i.pot||i.takeout?"pot":""} ${["菊花茶","國寶茶","奶茶","冬露"].includes(i.k)?"narrow":""}" data-open="${i.k}" data-phase="${ph}" style="${style}">
     <div class="band"><b class="${i.k.length>4?"long":""}">${i.k}</b><small>${p?amt(i.k,b.size):locSummary(i.k)}</small></div>
     <div class="cbody"><div><div class="left" data-left="${b.id}">${fmtLeft(t.to-now)}</div>${al&&!p?alertLine:`<div class="cap">${!p&&!itemHasCounter(i.k)?"都在冰箱・":""}${t.cap}</div>${alertLine}`}</div>${p&&ph==="cook"?potSVG(b.id):""}</div>
     <div class="bar"><i data-bar="${b.id}" style="width:${pct(t,now)}%"></i></div>${tally}${p&&L.length>1?`<span class="more">+${L.length-1}</span>`:""}</button>`;
@@ -723,8 +725,8 @@ function renderItemSheet(k){
   }else{
     if(i.pot){
       add=`<p class="lbl">${i.rec?.syrup?"調好了":"鍋煮好了"}・效期到 ${untilTxt(now+TEA_LIFE,now)}・${itemHasCounter(k)?"檯面還有，全部放冰箱":"1 桶放檯面，其他放冰箱"}</p>
-      <div class="big3">${TEA_MULTS.map(n=>`<button class="size" data-add="${n}">${n}<small class="unit">倍</small><small>${bucketsFor(k,n)}桶${n===3?"・大單":""}</small></button>`).join("")}</div>
-      ${i.rec?.syrup?`<div class="recipe"><b>配方</b>${TEA_MULTS.map(n=>`<span>${n}倍：冬瓜糖漿 ${i.rec.syrup[n-1]}g・冰水 ${i.rec.water[n-1]}ml</span>`).join("")}</div>`:i.rec?`<div class="recipe"><b>配方（95°C・${i.rec.steep}）</b>${TEA_MULTS.map(n=>`<span>${n}倍：${i.rec.leafName||"茶葉"} ${i.rec.leaf[n-1]}g・水 ${i.rec.water[n-1]}ml・${i.rec.cream?`奶精 ${i.rec.cream[n-1]}g・`:""}冰塊 ${i.rec.ice[n-1]}g</span>`).join("")}</div>`:""}`;
+      <div class="big3" style="grid-template-columns:repeat(${multsOf(i).length},1fr)">${multsOf(i).map(n=>`<button class="size" data-add="${n}">${n}<small class="unit">倍</small><small>${bucketsFor(k,n)}桶${n===3?"・大單":""}</small></button>`).join("")}</div>
+      ${i.rec?.syrup?`<div class="recipe"><b>配方</b>${multsOf(i).map(n=>`<span>${n}倍：冬瓜糖漿 ${i.rec.syrup[n-1]}g・冰水 ${i.rec.water[n-1]}ml</span>`).join("")}</div>`:i.rec?`<div class="recipe"><b>配方（95°C・${i.rec.steep}）</b>${TEA_MULTS.map(n=>`<span>${n}倍：${i.rec.leafName||"茶葉"} ${i.rec.leaf[n-1]}g・水 ${i.rec.water[n-1]}ml・${i.rec.cream?`奶精 ${i.rec.cream[n-1]}g・`:""}冰塊 ${i.rec.ice[n-1]}g</span>`).join("")}</div>`:""}`;
     }else{
       const hcnt=itemHasCounter(k);
       const where=isTakeout(k)?(hcnt?`${per(k)} 桶都放冰箱`:`檯面 1 桶・冰箱 ${fmt(per(k)-1)} 桶`):`放${hcnt?LOC.standby:LOC.counter}`;
