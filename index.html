@@ -440,8 +440,8 @@ const cloud={on:false,ready:false,got:{},base:null,last:{batches:{},tops:{},meta
       Object.keys(prev).forEach(id=>{if(!seen[id]){wb.delete(this.base.collection(col).doc(id));delete prev[id];n++}});
     });
     const m=clean(metaOf()),mk=stable(m);if(mk!==this.last.meta){wb.set(this.base.collection("meta").doc("state"),m);this.last.meta=mk;n++}
-    try{const ds=reportDay(Date.now()),k=dayKey(ds),body=dayReport(ds,true),rk=k+"|"+body;
-      if(rk!==this.last.report){wb.set(this.base.collection("reports").doc(k),{day:k,body,text:dayReport(ds),updatedAt:Date.now()});this.last.report=rk;n++}}catch(e){}
+    try{const ds=reportDay(Date.now()),k=dayKey(ds),body=dayReport(ds,true),pending=pendingOn(ds),rk=k+"|"+body+"|"+pending.join();
+      if(rk!==this.last.report){wb.set(this.base.collection("reports").doc(k),{day:k,body,text:dayReport(ds),pending,updatedAt:Date.now()});this.last.report=rk;n++}}catch(e){}
     if(n)wb.commit().catch(e=>this.fail("沒有存到（"+e.code+"），請檢查網路"));
   }
 };
@@ -768,8 +768,8 @@ function dayReport(ds,bodyOnly){
   sec("珍珠",x=>`${x.name}　煮 ${f(x.c)}g（約${cupsOf(x.c)}杯）・廢 ${f(x.w)}g`);
   sec("配料",x=>`${x.name}　做 ${f(x.c)} 盒・廢 ${f(x.w)} 盒${x.count!=null?`・冰箱點數 ${f(x.count)} 盒`:""}${x.by?.length?`（${x.by.join("、")}）`:""}`);
   const sum=(g,k)=>rows.filter(x=>x.grp===g).reduce((a,x)=>a+x[k],0);
-  const open=batches.filter(b=>b.status==="active"&&b.startAt>=ds&&b.startAt<ds+D);
-  if(open.length)L.push("",`⚠ 還有 ${open.length} 項沒按用完或報廢：${[...new Set(open.map(b=>b.item))].join("、")}`);
+  const open=pendingOn(ds);
+  if(open.length)L.push("",`⚠ 還沒按用完或報廢：${open.join("、")}`);
   if(L.length===1)L.push("","今天沒有紀錄");
   else L.push("",`合計　茶湯 ${f(sum("茶湯","c"))} 桶・廢 ${f(sum("茶湯","w"))} 桶　珍珠 ${f(sum("珍珠","c"))}g・廢 ${f(sum("珍珠","w"))}g`);
   return (bodyOnly?L.slice(1).join("\n").replace(/^\n+/,"").replace(/\n▍/g,"\n▸").replace(/^▍/,"▸"):L.join("\n"));
@@ -781,6 +781,11 @@ function copyReport(ds){
   try{navigator.clipboard.writeText(txt).then(done,fallback)}catch(e){fallback()}
 }
 let reportText="";
+/* things from that day still out (not marked used up or wasted): tea/pearl batches, and toppings whose 20:00 waste time has come */
+function pendingOn(ds){const now=Date.now(),de=ds+D;
+  const a=batches.filter(b=>b.status==="active"&&b.startAt>=ds&&b.startAt<de).map(b=>b.item);
+  const t=tops.filter(t=>t.status==="active"&&topDueAt(t)<=Math.max(now,ds+CLOSE_H*H)&&startOfDay(t.expireAt)<=ds).map(t=>t.name);
+  return [...new Set([...a,...t])];}
 function renderReport(){
   $("sheet-box").innerHTML=`<div class="sheet-head"><h3>收班報表</h3><button class="btn" data-close>關閉</button></div>
     <p class="note">這台手機不讓網頁直接複製，請長按下面的文字全選後複製。</p>
